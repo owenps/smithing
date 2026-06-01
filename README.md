@@ -1,13 +1,17 @@
-# Smithing
+# `smithing`
 
-Smithing is a local-first desktop application for keeping coding, terminals, git work, browser-based work, and agent-assisted development in one workspace.
+The single-window workspace engine built for coordinating parallel AI agent tasks across automated, tile-based Git worktrees.
 
-Current POC focus:
+`smithing` comes from the simple desire to reduce context switching across multiple applications.
 
-- Keyboard-first tiled workspace grid
-- Native terminal tiles backed by PTYs
-- Tile splitting, closing, resizing, focus movement, and focus mode
-- Settings for terminal text size, tile headers, shortcut reference, and optional agent launchers
+## Core Features
+
+1. **Tiles** -- Fundamentally your workspace is organized into tiles, a tile can be code editor, terminal, git diff, or any other tool you need to work with.
+
+## Installation
+
+> [!NOTE]
+> Stable release coming soon!
 
 ## Development
 
