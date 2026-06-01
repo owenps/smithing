@@ -1,0 +1,145 @@
+[
+  {
+    "id": "settings.open",
+    "title": "Open Settings",
+    "shortcutGroup": "General",
+    "shortcut": { "key": ",", "meta": true, "displayKeys": ["⌘", ","] },
+    "nativeAccelerator": "Cmd+,"
+  },
+  {
+    "id": "tilePicker.open",
+    "title": "Create New Tile",
+    "shortcutGroup": "General",
+    "shortcut": { "key": "n", "meta": true, "displayKeys": ["⌘", "N"] }
+  },
+  {
+    "id": "tile.close",
+    "title": "Close Tile",
+    "shortcutGroup": "Tiles",
+    "shortcut": {
+      "key": "backspace",
+      "meta": true,
+      "displayKeys": ["⌘", "⌫"]
+    }
+  },
+  {
+    "id": "tile.focusMode.toggle",
+    "title": "Toggle Tile Focus",
+    "shortcutGroup": "Tiles",
+    "shortcut": {
+      "key": "f",
+      "meta": true,
+      "alt": true,
+      "displayKeys": ["⌘", "⌥", "F"]
+    }
+  },
+  {
+    "id": "tile.split.right",
+    "title": "Split Right",
+    "shortcutGroup": "Tiles",
+    "shortcut": {
+      "key": "d",
+      "meta": true,
+      "displayKeys": ["⌘", "D"]
+    }
+  },
+  {
+    "id": "tile.split.down",
+    "title": "Split Down",
+    "shortcutGroup": "Tiles",
+    "shortcut": {
+      "key": "d",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "D"]
+    }
+  },
+  {
+    "id": "tile.focus.left",
+    "title": "Focus Left",
+    "shortcutGroup": "Focus",
+    "shortcut": {
+      "key": "h",
+      "ctrl": true,
+      "alt": true,
+      "displayKeys": ["⌃", "⌥", "H"]
+    }
+  },
+  {
+    "id": "tile.focus.down",
+    "title": "Focus Down",
+    "shortcutGroup": "Focus",
+    "shortcut": {
+      "key": "j",
+      "ctrl": true,
+      "alt": true,
+      "displayKeys": ["⌃", "⌥", "J"]
+    }
+  },
+  {
+    "id": "tile.focus.up",
+    "title": "Focus Up",
+    "shortcutGroup": "Focus",
+    "shortcut": {
+      "key": "k",
+      "ctrl": true,
+      "alt": true,
+      "displayKeys": ["⌃", "⌥", "K"]
+    }
+  },
+  {
+    "id": "tile.focus.right",
+    "title": "Focus Right",
+    "shortcutGroup": "Focus",
+    "shortcut": {
+      "key": "l",
+      "ctrl": true,
+      "alt": true,
+      "displayKeys": ["⌃", "⌥", "L"]
+    }
+  },
+  {
+    "id": "tile.resize.left",
+    "title": "Resize Left",
+    "shortcutGroup": "Layout",
+    "shortcut": {
+      "key": "arrowleft",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "←"]
+    }
+  },
+  {
+    "id": "tile.resize.down",
+    "title": "Resize Down",
+    "shortcutGroup": "Layout",
+    "shortcut": {
+      "key": "arrowdown",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "↓"]
+    }
+  },
+  {
+    "id": "tile.resize.up",
+    "title": "Resize Up",
+    "shortcutGroup": "Layout",
+    "shortcut": {
+      "key": "arrowup",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "↑"]
+    }
+  },
+  {
+    "id": "tile.resize.right",
+    "title": "Resize Right",
+    "shortcutGroup": "Layout",
+    "shortcut": {
+      "key": "arrowright",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "→"]
+    }
+  }
+]

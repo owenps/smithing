@@ -1,0 +1,17 @@
+# dependencies
+node_modules/
+
+# frontend build
+dist/
+.vite/
+
+# Tauri/Rust build
+src-tauri/target/
+
+# editor/system
+.DS_Store
+.idea/
+.vscode/
+
+# logs
+*.log
