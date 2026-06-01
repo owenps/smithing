@@ -15,12 +15,21 @@ The single-window workspace engine built for coordinating parallel AI agent task
 
 ## Core Features
 
-1. **Tiles** -- Fundamentally your workspace is organized into tiles, a tile can be code editor, terminal, git diff, or any other tool you need to work with.
+* **Native Git Worktree Support 𖣂** — Every feature, bugfix, or experiment gets its own isolated worktree. No stashing, no branch juggling. Spin up and switch instantly.
+* **Flexible Tile Workspaces ⊞** — Build your workspace out of tiles: code editors, terminals, git diffs, browsers, issue views, PR reviews, and agent sessions. Arrange them however the task demands.
+* **Keyboard-First Navigation ⚡︎** — Move fast without reaching for the mouse. Vim-friendly navigation, quick switching, and command-driven workflows throughout.
+* **Integrated Git Review ⎇** — Review diffs, inspect changes, compare branches, and manage work-in-progress without leaving the app.
+* **Reusable Arrangements ⟡** — Define project-specific workspace templates so common workflows open with the right tiles, layout, and startup actions already in place.
+
+## Showcase
+
+> [!NOTE]
+> Coming soon w/ stable release! ⸜(˶˃ ᵕ ˂˶)⸝
 
 ## Installation
 
-> [!NOTE]
-> Stable release coming soon!
+> [!IMPORTANT]
+> Stable release coming soon! (˶ᵔ ᵕ ᵔ˶)
 
 ## Development
 
