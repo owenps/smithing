@@ -16,7 +16,7 @@ use tauri::{
 };
 use uuid::Uuid;
 
-const APP_NAME: &str = "Smithing";
+const APP_NAME: &str = "Fluidity";
 const OPEN_SETTINGS_MENU_ID: &str = "settings.open";
 const OPEN_SETTINGS_EVENT: &str = "app://open-settings";
 const ADD_PROJECT_MENU_ID: &str = "project.add";
@@ -380,7 +380,7 @@ fn terminal_create(
     let mut command = terminal_command(&shell, cwd, &launch_plan);
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
-    command.env("SMITHING_TILE_ID", request.tile_id);
+    command.env("FLUIDITY_TILE_ID", request.tile_id);
 
     let child = pair
         .slave

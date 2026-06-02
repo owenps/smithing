@@ -1,12 +1,12 @@
 [package]
-name = "smithing"
+name = "fluidity"
 version = "0.1.0"
-description = "Smithing desktop application"
+description = "Fluidity desktop application"
 authors = ["Owen Smith"]
 edition = "2021"
 
 [lib]
-name = "smithing_lib"
+name = "fluidity_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

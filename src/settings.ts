@@ -4,7 +4,9 @@ import {
   type TilePickerVisibility,
 } from "./tilePickerCatalog";
 
-const settingsStorageKey = "smithing.settings.v1";
+const settingsStorageKey = "fluidity.settings.v1";
+const deltaSettingsStorageKey = "delta.settings.v1";
+const smithingSettingsStorageKey = "smithing.settings.v1";
 const terminalFontSizeMin = 10;
 const terminalFontSizeMax = 24;
 
@@ -36,7 +38,10 @@ export function readAppSettings(defaultDebugLayout: boolean): AppSettings {
   if (typeof window === "undefined") return defaults;
 
   try {
-    const rawSettings = window.localStorage.getItem(settingsStorageKey);
+    const rawSettings =
+      window.localStorage.getItem(settingsStorageKey) ??
+      window.localStorage.getItem(deltaSettingsStorageKey) ??
+      window.localStorage.getItem(smithingSettingsStorageKey);
     if (!rawSettings) return defaults;
 
     const stored = JSON.parse(rawSettings) as StoredSettings;
@@ -76,6 +81,8 @@ export function clearAppSettings() {
 
   try {
     window.localStorage.removeItem(settingsStorageKey);
+    window.localStorage.removeItem(deltaSettingsStorageKey);
+    window.localStorage.removeItem(smithingSettingsStorageKey);
   } catch {
     // Ignore storage failures so reset can still clear in-memory state.
   }
