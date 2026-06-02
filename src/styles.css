@@ -966,6 +966,104 @@ body {
   font-size: 12px;
 }
 
+.settings-projects-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.settings-project-refresh-button,
+.settings-project-remove-button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 0.65rem;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.settings-project-refresh-button:hover,
+.settings-project-refresh-button:focus-visible,
+.settings-project-remove-button:hover,
+.settings-project-remove-button:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.settings-projects-list {
+  display: grid;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.settings-project-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+
+.settings-project-row:first-child {
+  border-top: 0;
+}
+
+.settings-project-row:hover,
+.settings-project-row-active {
+  background: var(--accent);
+  outline: 1px solid var(--border);
+}
+
+.settings-project-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.settings-project-name {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 0.5rem;
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.settings-project-current {
+  flex: 0 0 auto;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--primary);
+  color: var(--primary);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.settings-project-root {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-project-remove-button {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border));
+  color: var(--destructive);
+}
+
+.settings-project-empty {
+  padding: 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
 .selector-options {
   display: grid;
   max-height: 220px;

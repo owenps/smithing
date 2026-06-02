@@ -6,7 +6,7 @@ import { Picker, type PickerItem } from "./Picker";
 import { APP_NAME } from "./appConstants";
 import { resetApplication } from "./applicationClient";
 import { SettingsModal } from "./SettingsModal";
-import { addProject } from "./projectClient";
+import { addProject, listProjects, removeProject } from "./projectClient";
 import {
   clearAppSettings,
   createDefaultAppSettings,
@@ -25,6 +25,8 @@ import {
 import {
   GRID_COLUMNS,
   GRID_ROWS,
+  type CurrentWorkspaceResponse,
+  type RegisteredProject,
   type TerminalLaunch,
   type Tile,
   type TileResumeMetadata,
@@ -57,7 +59,12 @@ function createLayoutFromTiles(tiles: Tile[]): LayoutState {
 
 function terminalLaunchForTile(tile: Tile): TerminalLaunch {
   if (tile.kind === "tool") {
-    return { kind: "tool", toolId: tile.toolId, resume: tile.resume };
+    return {
+      kind: "tool",
+      integrationId: tile.integrationId,
+      integrationTileId: tile.integrationTileId,
+      resume: tile.resume,
+    };
   }
 
   return { kind: "shell" };
@@ -75,6 +82,8 @@ export function App() {
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [registeredProjects, setRegisteredProjects] = useState<RegisteredProject[]>([]);
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
   const [settings, setSettings] = useState(() => readAppSettings(import.meta.env.DEV));
   const { debugLayout, terminalFontSize, tileHeadersVisible, tilePickerVisibility } = settings;
@@ -128,15 +137,37 @@ export function App() {
     [dismissToast],
   );
 
+  const applyCurrentWorkspace = useCallback((current: CurrentWorkspaceResponse | null) => {
+    setContext(current?.context ?? null);
+    setCurrentWorkspaceId(current?.workspaceId ?? null);
+    setContextLoaded(true);
+    setLayout(current ? createLayoutFromTileState(current.tileState) : createInitialLayout());
+  }, []);
+
+  const refreshProjects = useCallback(() => {
+    setProjectsLoaded(false);
+    void listProjects()
+      .then((projects) => {
+        setRegisteredProjects(projects);
+        setProjectsLoaded(true);
+      })
+      .catch((error) => {
+        setProjectsLoaded(true);
+        addToast({
+          severity: "error",
+          title: "Could not load projects",
+          detail: String(error),
+        });
+      });
+  }, [addToast]);
+
   const runAddProject = useCallback(() => {
     void addProject()
       .then((response) => {
+        refreshProjects();
         if (!response.current) return;
 
-        setContext(response.current.context);
-        setCurrentWorkspaceId(response.current.workspaceId);
-        setContextLoaded(true);
-        setLayout(createLayoutFromTileState(response.current.tileState));
+        applyCurrentWorkspace(response.current);
         setTilePickerOpen(false);
         setSettingsOpen(false);
         addToast({
@@ -152,7 +183,32 @@ export function App() {
           detail: String(error),
         });
       });
-  }, [addToast]);
+  }, [addToast, applyCurrentWorkspace, refreshProjects]);
+
+  const runRemoveProject = useCallback(
+    (projectId: string) => {
+      void removeProject({ projectId })
+        .then((response) => {
+          setRegisteredProjects((previous) =>
+            previous.filter((project) => project.id !== response.project.id),
+          );
+          applyCurrentWorkspace(response.current);
+          addToast({
+            severity: "success",
+            title: "Project disconnected",
+            detail: `${response.project.name} disconnected; ${response.removedWorkspaceCount} workspace${response.removedWorkspaceCount === 1 ? "" : "s"} closed.`,
+          });
+        })
+        .catch((error) => {
+          addToast({
+            severity: "error",
+            title: "Could not disconnect project",
+            detail: String(error),
+          });
+        });
+    },
+    [addToast, applyCurrentWorkspace],
+  );
 
   const resetClientState = useCallback(() => {
     clearAppSettings();
@@ -161,6 +217,8 @@ export function App() {
     setCurrentWorkspaceId(null);
     setContextLoaded(true);
     setLayout(createInitialLayout());
+    setRegisteredProjects([]);
+    setProjectsLoaded(true);
     setTilePickerOpen(false);
     setSettingsOpen(false);
   }, []);
@@ -299,7 +357,7 @@ export function App() {
   const createTile = (
     tileOptions:
       | { kind: "terminal"; title: string }
-      | { kind: "tool"; title: string; toolId: string },
+      | { kind: "tool"; title: string; integrationId: string; integrationTileId: string },
     splitDirection?: TileSplitDirection,
   ) => {
     const result = splitFocusedTile(
@@ -465,6 +523,11 @@ export function App() {
           onTileHeadersVisibleChange={setTileHeadersVisibleSetting}
           tilePickerVisibility={tilePickerVisibility}
           onTilePickerVisibilityChange={setTilePickerItemVisibility}
+          projects={registeredProjects}
+          projectsLoaded={projectsLoaded}
+          currentProjectRoot={context?.project.root ?? null}
+          onRefreshProjects={refreshProjects}
+          onRemoveProject={runRemoveProject}
           onResetApplication={runResetApplication}
           onClose={() => setSettingsOpen(false)}
         />
@@ -480,7 +543,12 @@ export function App() {
             if (!catalogItem) return;
             createTile(
               catalogItem.kind === "tool"
-                ? { kind: "tool", title: catalogItem.title, toolId: catalogItem.toolId }
+                ? {
+                    kind: "tool",
+                    title: catalogItem.title,
+                    integrationId: catalogItem.integrationId,
+                    integrationTileId: catalogItem.integrationTileId,
+                  }
                 : { kind: "terminal", title: catalogItem.title },
               options.splitDirection,
             );

@@ -95,3 +95,11 @@ _Avoid_: Open project, recent folder, repository bookmark, workspace
 **Project Registry**:
 The global collection of registered projects known to Smithing.
 _Avoid_: Project settings, recent projects, folder list
+
+**Integration**:
+A product-level connection to an external tool or platform that can inform one or more Tiles, provide Tile Resume Metadata behavior, or support workflow-specific surfaces such as PR review or PR status.
+_Avoid_: plugin, extension, tool tile
+
+**Integration Tile**:
+A Tile provided by an Integration, such as a Claude CLI Tile, GitHub PR Reviewer Tile, or GitHub PR Status Tile.
+_Avoid_: tile offering, capability, feature, tool

@@ -22,8 +22,9 @@ const OPEN_SETTINGS_EVENT: &str = "app://open-settings";
 const ADD_PROJECT_MENU_ID: &str = "project.add";
 const ADD_PROJECT_EVENT: &str = "app://add-project";
 const COMMANDS_MANIFEST_JSON: &str = include_str!("../../src/commandsManifest.json");
+const INTEGRATION_CATALOG_JSON: &str = include_str!("../../src/shared/integrationCatalog.json");
 const APP_STATE_FILE: &str = "app-state.json";
-const APP_STATE_VERSION: u32 = 2;
+const APP_STATE_VERSION: u32 = 3;
 const GRID_COLUMNS: i32 = 12;
 const GRID_ROWS: i32 = 8;
 const MIN_TILE_WIDTH: i32 = 3;
@@ -118,9 +119,13 @@ struct PersistedTile {
     kind: String,
     title: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    tool_id: Option<String>,
+    integration_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    integration_tile_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     resume: Option<TileResumeMetadata>,
+    #[serde(default, skip_serializing)]
+    tool_id: Option<String>,
     #[serde(default, skip_serializing)]
     initial_command: Option<String>,
     x: i32,
@@ -157,8 +162,11 @@ struct TerminalCreateRequest {
 #[serde(rename_all = "camelCase")]
 struct TerminalLaunchRequest {
     kind: String,
-    tool_id: Option<String>,
+    integration_id: Option<String>,
+    integration_tile_id: Option<String>,
     resume: Option<TileResumeMetadata>,
+    #[serde(default)]
+    tool_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -211,6 +219,36 @@ struct CommandManifestEntry {
     native_accelerator: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct IntegrationCatalog {
+    integrations: Vec<IntegrationCatalogIntegration>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct IntegrationCatalogIntegration {
+    id: String,
+    tiles: Vec<IntegrationCatalogTile>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct IntegrationCatalogTile {
+    id: String,
+    title: String,
+    kind: String,
+    tool_command: Option<String>,
+    resume_provider: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+struct ToolIntegrationTile {
+    integration_id: String,
+    integration_tile_id: String,
+    title: String,
+    tool_command: String,
+    resume_provider: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct CurrentWorkspaceResponse {
@@ -249,6 +287,20 @@ struct ProjectAddResponse {
     duplicate: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectRemoveRequest {
+    project_id: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ProjectRemoveResponse {
+    current: Option<CurrentWorkspaceResponse>,
+    project: RegisteredProject,
+    removed_workspace_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RegisteredProject {
@@ -271,6 +323,12 @@ fn workspace_current(
 ) -> Result<Option<CurrentWorkspaceResponse>, String> {
     let app_state = state.app_state.lock().map_err(lock_error)?;
     Ok(current_workspace_response(&app_state))
+}
+
+#[tauri::command]
+fn project_list(state: State<'_, WorkspaceState>) -> Result<Vec<RegisteredProject>, String> {
+    let app_state = state.app_state.lock().map_err(lock_error)?;
+    Ok(app_state.projects.clone())
 }
 
 #[tauri::command]
@@ -319,6 +377,38 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
         current: current_workspace_response(&app_state),
         project: Some(project),
         duplicate,
+    })
+}
+
+#[tauri::command]
+fn project_remove(
+    state: State<'_, WorkspaceState>,
+    request: ProjectRemoveRequest,
+) -> Result<ProjectRemoveResponse, String> {
+    let mut app_state = state.app_state.lock().map_err(lock_error)?;
+    let Some(project_index) = app_state
+        .projects
+        .iter()
+        .position(|project| project.id == request.project_id)
+    else {
+        return Err("project not found".to_string());
+    };
+
+    let project = app_state.projects.remove(project_index);
+    let original_workspace_count = app_state.open_workspaces.len();
+    app_state
+        .open_workspaces
+        .retain(|workspace| workspace.project_id != project.id);
+    let removed_workspace_count = original_workspace_count - app_state.open_workspaces.len();
+
+    app_state.current_workspace_id =
+        current_open_workspace(&app_state).map(|workspace| workspace.id.clone());
+    state.save(&app_state)?;
+
+    Ok(ProjectRemoveResponse {
+        current: current_workspace_response(&app_state),
+        project,
+        removed_workspace_count,
     })
 }
 
@@ -478,7 +568,9 @@ pub fn run() {
         .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             workspace_current,
+            project_list,
             project_add,
+            project_remove,
             workspace_tile_state_save,
             application_reset,
             terminal_create,
@@ -640,7 +732,7 @@ fn load_app_state(state_path: &Path) -> PersistedAppState {
         return PersistedAppState::default();
     };
 
-    if app_state.version != 1 && app_state.version != APP_STATE_VERSION {
+    if !matches!(app_state.version, 1 | 2 | APP_STATE_VERSION) {
         backup_corrupt_app_state(state_path);
         return PersistedAppState::default();
     }
@@ -754,8 +846,10 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
             id: format!("tile-{}", Uuid::new_v4()),
             kind: "terminal".to_string(),
             title: "Terminal".to_string(),
-            tool_id: None,
+            integration_id: None,
+            integration_tile_id: None,
             resume: None,
+            tool_id: None,
             initial_command: None,
             x: 0,
             y: 0,
@@ -767,7 +861,7 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
 
 fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
     let mut ids = HashSet::new();
-    let mut tiles = Vec::new();
+    let mut tiles: Vec<PersistedTile> = Vec::new();
 
     for mut tile in tile_state.tiles {
         if tile.id.trim().is_empty() || !ids.insert(tile.id.clone()) {
@@ -781,16 +875,21 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
         }
 
         tile.resume = sanitize_resume_metadata(tile.resume);
+        let legacy_tool_id = tile.tool_id.take();
         let legacy_initial_command = tile.initial_command.take();
 
         if tile.kind == "terminal" {
-            if let Some(tool_id) =
-                recognized_legacy_initial_command(legacy_initial_command.as_deref())
-            {
+            if let Some(tool_tile) = legacy_tool_integration_tile(
+                legacy_tool_id.as_deref(),
+                legacy_initial_command.as_deref(),
+            ) {
                 tile.kind = "tool".to_string();
-                tile.tool_id = Some(tool_id.to_string());
+                tile.integration_id = Some(tool_tile.integration_id);
+                tile.integration_tile_id = Some(tool_tile.integration_tile_id);
             } else {
-                tile.tool_id = None;
+                tile.integration_id = None;
+                tile.integration_tile_id = None;
+                tile.resume = None;
             }
         }
 
@@ -803,16 +902,19 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
         }
 
         if tile.kind == "tool" {
-            let Some(tool_id) = tile
-                .tool_id
-                .as_deref()
-                .filter(|tool_id| is_known_tool(tool_id))
-                .map(str::to_string)
-            else {
+            let Some(tool_tile) = tool_integration_tile_for_tile(&tile).or_else(|| {
+                legacy_tool_integration_tile(
+                    legacy_tool_id.as_deref(),
+                    legacy_initial_command.as_deref(),
+                )
+            }) else {
                 continue;
             };
+
+            tile.integration_id = Some(tool_tile.integration_id);
+            tile.integration_tile_id = Some(tool_tile.integration_tile_id);
             if tile.title.trim().is_empty() {
-                tile.title = tool_title(&tool_id).to_string();
+                tile.title = tool_tile.title;
             }
             tiles.push(tile);
         }
@@ -856,30 +958,67 @@ fn is_valid_resume_identifier(identifier: &str) -> bool {
         && !identifier.contains('\r')
 }
 
-fn recognized_legacy_initial_command(command: Option<&str>) -> Option<&'static str> {
-    match command {
-        Some("claude") => Some("claude"),
-        Some("codex") => Some("codex"),
-        Some("gemini") => Some("gemini"),
-        Some("opencode") => Some("opencode"),
-        Some("pi") => Some("pi"),
-        _ => None,
-    }
+fn integration_catalog() -> IntegrationCatalog {
+    serde_json::from_str(INTEGRATION_CATALOG_JSON)
+        .expect("integration catalog should be valid JSON")
 }
 
-fn is_known_tool(tool_id: &str) -> bool {
-    matches!(tool_id, "claude" | "codex" | "gemini" | "opencode" | "pi")
+fn tool_integration_tile(
+    integration_id: &str,
+    integration_tile_id: &str,
+) -> Option<ToolIntegrationTile> {
+    integration_catalog()
+        .integrations
+        .into_iter()
+        .find(|integration| integration.id == integration_id)
+        .and_then(|integration| {
+            integration
+                .tiles
+                .into_iter()
+                .find(|tile| tile.id == integration_tile_id && tile.kind == "tool")
+                .and_then(|tile| tool_integration_tile_from_catalog(integration.id, tile))
+        })
 }
 
-fn tool_title(tool_id: &str) -> &'static str {
-    match tool_id {
-        "claude" => "Claude",
-        "codex" => "Codex",
-        "gemini" => "Gemini",
-        "opencode" => "OpenCode",
-        "pi" => "Pi",
-        _ => "Tool",
-    }
+fn tool_integration_tile_for_tile(tile: &PersistedTile) -> Option<ToolIntegrationTile> {
+    tool_integration_tile(
+        tile.integration_id.as_deref()?,
+        tile.integration_tile_id.as_deref()?,
+    )
+}
+
+fn legacy_tool_integration_tile(
+    legacy_tool_id: Option<&str>,
+    legacy_initial_command: Option<&str>,
+) -> Option<ToolIntegrationTile> {
+    let legacy_id = legacy_tool_id.or(legacy_initial_command)?;
+    integration_catalog()
+        .integrations
+        .into_iter()
+        .flat_map(|integration| {
+            integration
+                .tiles
+                .into_iter()
+                .map(move |tile| (integration.id.clone(), tile))
+        })
+        .filter_map(|(integration_id, tile)| {
+            tool_integration_tile_from_catalog(integration_id, tile)
+        })
+        .find(|tile| tile.tool_command == legacy_id || tile.resume_provider == legacy_id)
+}
+
+fn tool_integration_tile_from_catalog(
+    integration_id: String,
+    tile: IntegrationCatalogTile,
+) -> Option<ToolIntegrationTile> {
+    let tool_command = tile.tool_command?;
+    Some(ToolIntegrationTile {
+        integration_id,
+        integration_tile_id: tile.id,
+        title: tile.title,
+        resume_provider: tile.resume_provider.unwrap_or_else(|| tool_command.clone()),
+        tool_command,
+    })
 }
 
 fn is_valid_tile_geometry(tile: &PersistedTile) -> bool {
@@ -991,34 +1130,40 @@ fn terminal_launch_plan(launch: &TerminalLaunchRequest) -> Result<TerminalLaunch
         });
     }
 
-    let tool_id = launch
-        .tool_id
+    let tool_tile = launch
+        .integration_id
         .as_deref()
-        .filter(|tool_id| is_known_tool(tool_id))
-        .ok_or_else(|| "unsupported tool tile".to_string())?;
+        .zip(launch.integration_tile_id.as_deref())
+        .and_then(|(integration_id, integration_tile_id)| {
+            tool_integration_tile(integration_id, integration_tile_id)
+        })
+        .or_else(|| legacy_tool_integration_tile(launch.tool_id.as_deref(), None))
+        .ok_or_else(|| "unsupported integration tile".to_string())?;
     let existing_resume = launch
         .resume
         .clone()
         .and_then(|resume| sanitize_resume_metadata(Some(resume)));
 
-    if let Some(resume) = existing_resume.filter(|resume| resume.provider == tool_id) {
+    if let Some(resume) =
+        existing_resume.filter(|resume| resume.provider == tool_tile.resume_provider)
+    {
         return Ok(TerminalLaunchPlan {
-            shell_command: Some(resume_tool_shell_command(tool_id, &resume)),
+            shell_command: Some(resume_tool_shell_command(&tool_tile.tool_command, &resume)),
             assigned_resume: None,
         });
     }
 
     if launch.resume.is_none() {
-        if let Some(resume) = new_preassigned_resume(tool_id) {
+        if let Some(resume) = new_preassigned_resume(&tool_tile.resume_provider) {
             return Ok(TerminalLaunchPlan {
-                shell_command: Some(new_tool_shell_command(tool_id, &resume)),
+                shell_command: Some(new_tool_shell_command(&tool_tile.tool_command, &resume)),
                 assigned_resume: Some(resume),
             });
         }
     }
 
     Ok(TerminalLaunchPlan {
-        shell_command: Some(shell_command_from_args(vec![tool_id.to_string()])),
+        shell_command: Some(shell_command_from_args(vec![tool_tile.tool_command])),
         assigned_resume: None,
     })
 }
@@ -1268,7 +1413,12 @@ mod tests {
 
         assert_eq!(sanitized.tiles.len(), 1);
         assert_eq!(sanitized.tiles[0].kind, "tool");
-        assert_eq!(sanitized.tiles[0].tool_id.as_deref(), Some("claude"));
+        assert_eq!(sanitized.tiles[0].integration_id.as_deref(), Some("claude"));
+        assert_eq!(
+            sanitized.tiles[0].integration_tile_id.as_deref(),
+            Some("cli")
+        );
+        assert!(sanitized.tiles[0].tool_id.is_none());
         assert!(sanitized.tiles[0].initial_command.is_none());
     }
 
@@ -1286,6 +1436,25 @@ mod tests {
         assert!(sanitized.tiles[0].initial_command.is_none());
     }
 
+    #[test]
+    fn sanitize_tile_state_migrates_legacy_tool_ids_to_integration_tiles() {
+        let tile_state = WorkspaceTileState {
+            tiles: vec![tile_with_legacy_tool_id("codex")],
+        };
+
+        let sanitized = sanitize_tile_state(tile_state);
+
+        assert_eq!(sanitized.tiles.len(), 1);
+        assert_eq!(sanitized.tiles[0].kind, "tool");
+        assert_eq!(sanitized.tiles[0].integration_id.as_deref(), Some("codex"));
+        assert_eq!(
+            sanitized.tiles[0].integration_tile_id.as_deref(),
+            Some("cli")
+        );
+        assert_eq!(sanitized.tiles[0].title, "Codex");
+        assert!(sanitized.tiles[0].tool_id.is_none());
+    }
+
     fn resume(provider: &str, identifier: &str) -> TileResumeMetadata {
         TileResumeMetadata {
             provider: provider.to_string(),
@@ -1296,8 +1465,10 @@ mod tests {
     fn tool_launch(tool_id: &str, resume: Option<TileResumeMetadata>) -> TerminalLaunchRequest {
         TerminalLaunchRequest {
             kind: "tool".to_string(),
-            tool_id: Some(tool_id.to_string()),
+            integration_id: Some(tool_id.to_string()),
+            integration_tile_id: Some("cli".to_string()),
             resume,
+            tool_id: None,
         }
     }
 
@@ -1306,9 +1477,28 @@ mod tests {
             id: "tile-test".to_string(),
             kind: "terminal".to_string(),
             title: "Test".to_string(),
-            tool_id: None,
+            integration_id: None,
+            integration_tile_id: None,
             resume: None,
+            tool_id: None,
             initial_command: Some(initial_command.to_string()),
+            x: 0,
+            y: 0,
+            w: MIN_TILE_WIDTH,
+            h: MIN_TILE_HEIGHT,
+        }
+    }
+
+    fn tile_with_legacy_tool_id(tool_id: &str) -> PersistedTile {
+        PersistedTile {
+            id: "tile-test".to_string(),
+            kind: "tool".to_string(),
+            title: "".to_string(),
+            integration_id: None,
+            integration_tile_id: None,
+            resume: None,
+            tool_id: Some(tool_id.to_string()),
+            initial_command: None,
             x: 0,
             y: 0,
             w: MIN_TILE_WIDTH,

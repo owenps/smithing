@@ -1,0 +1,79 @@
+{
+  "integrations": [
+    {
+      "id": "claude",
+      "title": "Claude",
+      "tiles": [
+        {
+          "id": "cli",
+          "title": "Claude",
+          "kind": "tool",
+          "defaultVisible": false,
+          "iconKey": "claude",
+          "toolCommand": "claude",
+          "resumeProvider": "claude"
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "title": "Codex",
+      "tiles": [
+        {
+          "id": "cli",
+          "title": "Codex",
+          "kind": "tool",
+          "defaultVisible": false,
+          "iconKey": "codex",
+          "toolCommand": "codex",
+          "resumeProvider": "codex"
+        }
+      ]
+    },
+    {
+      "id": "gemini",
+      "title": "Gemini",
+      "tiles": [
+        {
+          "id": "cli",
+          "title": "Gemini",
+          "kind": "tool",
+          "defaultVisible": false,
+          "iconKey": "gemini",
+          "toolCommand": "gemini",
+          "resumeProvider": "gemini"
+        }
+      ]
+    },
+    {
+      "id": "opencode",
+      "title": "OpenCode",
+      "tiles": [
+        {
+          "id": "cli",
+          "title": "OpenCode",
+          "kind": "tool",
+          "defaultVisible": false,
+          "iconKey": "opencode",
+          "toolCommand": "opencode",
+          "resumeProvider": "opencode"
+        }
+      ]
+    },
+    {
+      "id": "pi",
+      "title": "Pi",
+      "tiles": [
+        {
+          "id": "cli",
+          "title": "Pi",
+          "kind": "tool",
+          "defaultVisible": false,
+          "iconKey": "pi",
+          "toolCommand": "pi",
+          "resumeProvider": "pi"
+        }
+      ]
+    }
+  ]
+}

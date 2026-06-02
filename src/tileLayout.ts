@@ -140,7 +140,7 @@ export type TileSplitDirection = Extract<Direction, "right" | "down">;
 
 type NewTileOptions =
   | { kind: "terminal"; title: string }
-  | { kind: "tool"; title: string; toolId: string };
+  | { kind: "tool"; title: string; integrationId: string; integrationTileId: string };
 
 const defaultNewTileOptions = { kind: "terminal", title: "Terminal" } as const;
 
@@ -184,7 +184,12 @@ export function splitFocusedTileInDirection(
 
   const newTileOptions: NewTileOptions =
     focused.kind === "tool"
-      ? { kind: "tool", title: focused.title, toolId: focused.toolId }
+      ? {
+          kind: "tool",
+          title: focused.title,
+          integrationId: focused.integrationId,
+          integrationTileId: focused.integrationTileId,
+        }
       : { kind: "terminal", title: focused.title };
 
   if (direction === "right" && focused.w >= MIN_TILE_WIDTH * 2) {
@@ -209,7 +214,12 @@ function createTileFromOptions(
   };
 
   if (options.kind === "tool") {
-    return { ...base, kind: "tool", toolId: options.toolId };
+    return {
+      ...base,
+      kind: "tool",
+      integrationId: options.integrationId,
+      integrationTileId: options.integrationTileId,
+    };
   }
 
   return { ...base, kind: "terminal" };

@@ -173,7 +173,13 @@ export function TerminalTile({
       terminalRef.current = null;
       fitAddonRef.current = null;
     };
-  }, [cwd, launch.kind, launch.kind === "tool" ? launch.toolId : undefined, tileId]);
+  }, [
+    cwd,
+    launch.kind,
+    launch.kind === "tool" ? launch.integrationId : undefined,
+    launch.kind === "tool" ? launch.integrationTileId : undefined,
+    tileId,
+  ]);
 
   useEffect(() => {
     const terminal = terminalRef.current;

@@ -29,7 +29,8 @@ export interface TerminalWorkspaceTile extends BaseTile {
 
 export interface ToolWorkspaceTile extends BaseTile {
   kind: "tool";
-  toolId: string;
+  integrationId: string;
+  integrationTileId: string;
 }
 
 export type Tile = TerminalWorkspaceTile | ToolWorkspaceTile;
@@ -77,6 +78,16 @@ export interface ProjectAddResponse {
   duplicate: boolean;
 }
 
+export interface ProjectRemoveRequest {
+  projectId: string;
+}
+
+export interface ProjectRemoveResponse {
+  current: CurrentWorkspaceResponse | null;
+  project: RegisteredProject;
+  removedWorkspaceCount: number;
+}
+
 export interface WorkspaceTileStateSaveRequest {
   workspaceId: string;
   tileState: WorkspaceTileState;
@@ -84,7 +95,12 @@ export interface WorkspaceTileStateSaveRequest {
 
 export type TerminalLaunch =
   | { kind: "shell" }
-  | { kind: "tool"; toolId: string; resume?: TileResumeMetadata };
+  | {
+      kind: "tool";
+      integrationId: string;
+      integrationTileId: string;
+      resume?: TileResumeMetadata;
+    };
 
 export interface TerminalCreateRequest {
   tileId: string;

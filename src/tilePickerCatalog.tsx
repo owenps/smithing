@@ -1,10 +1,29 @@
 import type { ReactNode } from "react";
+import integrationCatalogData from "./shared/integrationCatalog.json";
 import claudeLogoUrl from "./assets/claude-logo.svg";
 import geminiLogoUrl from "./assets/gemini-logo.svg";
 import openAiLogoUrl from "./assets/openai-logo.svg";
 import opencodeLogoUrl from "./assets/opencode-logo.svg";
 import piLogoUrl from "./assets/pi-logo.svg";
 import type { Tile } from "./types";
+
+interface IntegrationCatalog {
+  integrations: IntegrationCatalogIntegration[];
+}
+
+interface IntegrationCatalogIntegration {
+  id: string;
+  title: string;
+  tiles: IntegrationCatalogTile[];
+}
+
+interface IntegrationCatalogTile {
+  id: string;
+  title: string;
+  kind: "tool";
+  defaultVisible: boolean;
+  iconKey: string;
+}
 
 export type TilePickerCatalogItem =
   | {
@@ -18,11 +37,28 @@ export type TilePickerCatalogItem =
       kind: "tool";
       title: string;
       icon: ReactNode;
-      toolId: string;
+      integrationId: string;
+      integrationTileId: string;
     };
 
 type ConfigurableTilePickerCatalogItem = TilePickerCatalogItem & {
   defaultVisible: boolean;
+};
+
+const integrationCatalog = integrationCatalogData as IntegrationCatalog;
+
+const iconByKey: Record<string, ReactNode> = {
+  claude: (
+    <img className="picker-option-logo picker-option-logo-plain" src={claudeLogoUrl} alt="" />
+  ),
+  codex: (
+    <img className="picker-option-logo picker-option-logo-openai" src={openAiLogoUrl} alt="" />
+  ),
+  gemini: (
+    <img className="picker-option-logo picker-option-logo-plain" src={geminiLogoUrl} alt="" />
+  ),
+  opencode: <img className="picker-option-logo" src={opencodeLogoUrl} alt="" />,
+  pi: <img className="picker-option-logo" src={piLogoUrl} alt="" />,
 };
 
 const terminalTilePickerItem = {
@@ -33,57 +69,25 @@ const terminalTilePickerItem = {
   defaultVisible: true,
 } as const satisfies ConfigurableTilePickerCatalogItem;
 
-export const configurableTilePickerItems = [
-  {
-    id: "claude",
-    kind: "tool",
-    title: "Claude",
-    icon: (
-      <img className="picker-option-logo picker-option-logo-plain" src={claudeLogoUrl} alt="" />
-    ),
-    toolId: "claude",
-    defaultVisible: false,
-  },
-  {
-    id: "codex",
-    kind: "tool",
-    title: "Codex",
-    icon: (
-      <img className="picker-option-logo picker-option-logo-openai" src={openAiLogoUrl} alt="" />
-    ),
-    toolId: "codex",
-    defaultVisible: false,
-  },
-  {
-    id: "gemini",
-    kind: "tool",
-    title: "Gemini",
-    icon: (
-      <img className="picker-option-logo picker-option-logo-plain" src={geminiLogoUrl} alt="" />
-    ),
-    toolId: "gemini",
-    defaultVisible: false,
-  },
-  {
-    id: "opencode",
-    kind: "tool",
-    title: "OpenCode",
-    icon: <img className="picker-option-logo" src={opencodeLogoUrl} alt="" />,
-    toolId: "opencode",
-    defaultVisible: false,
-  },
-  {
-    id: "pi",
-    kind: "tool",
-    title: "Pi",
-    icon: <img className="picker-option-logo" src={piLogoUrl} alt="" />,
-    toolId: "pi",
-    defaultVisible: false,
-  },
-  terminalTilePickerItem,
-] as const;
+const integrationTilePickerItems: ConfigurableTilePickerCatalogItem[] =
+  integrationCatalog.integrations.flatMap((integration) =>
+    integration.tiles.map((tile) => ({
+      id: integrationTilePickerItemId(integration.id, tile.id),
+      kind: tile.kind,
+      title: tile.title,
+      icon: iconByKey[tile.iconKey] ?? <span>{integration.title.slice(0, 1)}</span>,
+      integrationId: integration.id,
+      integrationTileId: tile.id,
+      defaultVisible: tile.defaultVisible,
+    })),
+  );
 
-export type ConfigurableTilePickerItemId = (typeof configurableTilePickerItems)[number]["id"];
+export const configurableTilePickerItems: ConfigurableTilePickerCatalogItem[] = [
+  ...integrationTilePickerItems,
+  terminalTilePickerItem,
+];
+
+export type ConfigurableTilePickerItemId = string;
 export type TilePickerVisibility = Record<ConfigurableTilePickerItemId, boolean>;
 
 export function createDefaultTilePickerVisibility(): TilePickerVisibility {
@@ -105,7 +109,14 @@ export function findTilePickerItemForTile(tile: Tile): TilePickerCatalogItem {
 
   return (
     configurableTilePickerItems.find(
-      (item) => item.kind === "tool" && item.toolId === tile.toolId,
+      (item) =>
+        item.kind === "tool" &&
+        item.integrationId === tile.integrationId &&
+        item.integrationTileId === tile.integrationTileId,
     ) ?? terminalTilePickerItem
   );
+}
+
+function integrationTilePickerItemId(integrationId: string, integrationTileId: string): string {
+  return `${integrationId}.${integrationTileId}`;
 }
