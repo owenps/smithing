@@ -6,6 +6,14 @@ import {
   type TilePickerVisibility,
 } from "./tilePickerCatalog";
 
+function orderTilePickerItems(visibility: TilePickerVisibility) {
+  return [...configurableTilePickerItems].sort((a, b) => {
+    const visibilityOrder = Number(visibility[b.id]) - Number(visibility[a.id]);
+    if (visibilityOrder !== 0) return visibilityOrder;
+    return a.title.localeCompare(b.title);
+  });
+}
+
 interface TilePickerSettingsProps {
   active: boolean;
   open: boolean;
@@ -33,19 +41,21 @@ export function TilePickerSettings({
   );
   const visibleCount = configurableTilePickerItems.filter((item) => visibility[item.id]).length;
   const summary = `${visibleCount} of ${configurableTilePickerItems.length} tile types visible`;
+  const [orderedItems, setOrderedItems] = useState(() => orderTilePickerItems(visibility));
 
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return configurableTilePickerItems;
-    return configurableTilePickerItems.filter((item) =>
-      item.title.toLowerCase().includes(normalizedQuery),
-    );
-  }, [query]);
+    if (!normalizedQuery) return orderedItems;
+    return orderedItems.filter((item) => item.title.toLowerCase().includes(normalizedQuery));
+  }, [orderedItems, query]);
 
   useEffect(() => {
     if (!open) return;
+
+    const nextOrderedItems = orderTilePickerItems(visibility);
+    setOrderedItems(nextOrderedItems);
     setQuery("");
-    setActiveOptionId(configurableTilePickerItems[0].id);
+    setActiveOptionId(nextOrderedItems[0].id);
     window.requestAnimationFrame(() => searchRef.current?.focus());
   }, [open]);
 

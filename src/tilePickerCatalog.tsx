@@ -25,7 +25,6 @@ const terminalTilePickerItem = {
 } as const satisfies ConfigurableTilePickerCatalogItem;
 
 export const configurableTilePickerItems = [
-  terminalTilePickerItem,
   {
     id: "claude",
     title: "Claude",
@@ -67,6 +66,7 @@ export const configurableTilePickerItems = [
     initialCommand: "pi",
     defaultVisible: false,
   },
+  terminalTilePickerItem,
 ] as const;
 
 export type ConfigurableTilePickerItemId = (typeof configurableTilePickerItems)[number]["id"];
