@@ -9,7 +9,7 @@ A desktop workspace for coordinating multiple AI coding agents, built to stay fl
 
 `smithing` comes from the simple desire to reduce context switching across multiple applications.
 
-Currently available only for <a href="https://www.apple.com/macos/"><kbd><img src="https://cdn.simpleicons.org/apple/white" width="16" valign="middle" /> macOS</kbd></a> &nbsp;.
+Currently available only for <a href="https://www.apple.com/macos/"><kbd><img src="https://cdn.simpleicons.org/apple/white" width="16" valign="middle" /> macOS</kbd></a>.&nbsp;
 
 ## Stack
 
