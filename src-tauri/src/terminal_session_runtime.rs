@@ -16,12 +16,15 @@ pub(crate) struct TerminalState {
 }
 
 struct TerminalSession {
+    workspace_id: String,
+    cwd: PathBuf,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     child_killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
 pub(crate) struct TerminalSessionCreateRequest {
+    pub(crate) workspace_id: String,
     pub(crate) tile_id: String,
     pub(crate) cwd: PathBuf,
     pub(crate) shell: String,
@@ -80,9 +83,10 @@ impl TerminalState {
             })
             .map_err(|error| error.to_string())?;
 
+        let cwd = request.cwd;
         let mut command = terminal_command(
             &request.shell,
-            request.cwd,
+            cwd.clone(),
             request.shell_command.as_deref(),
         );
         command.env("TERM", "xterm-256color");
@@ -108,6 +112,8 @@ impl TerminalState {
         self.sessions.lock().map_err(lock_error)?.insert(
             session_id.clone(),
             TerminalSession {
+                workspace_id: request.workspace_id,
+                cwd,
                 master: pair.master,
                 writer,
                 child_killer,
@@ -162,6 +168,36 @@ impl TerminalState {
             let _ = session.child_killer.kill();
         }
 
+        Ok(())
+    }
+
+    pub(crate) fn close_workspace(
+        &self,
+        workspace_id: &str,
+        workspace_root: &PathBuf,
+    ) -> Result<(), String> {
+        let mut sessions = self.sessions.lock().map_err(lock_error)?;
+        let session_ids = sessions
+            .iter()
+            .filter(|(_, session)| {
+                session.workspace_id == workspace_id || session.cwd.starts_with(workspace_root)
+            })
+            .map(|(session_id, _)| session_id.clone())
+            .collect::<Vec<_>>();
+
+        for session_id in session_ids {
+            if let Some(mut session) = sessions.remove(&session_id) {
+                let _ = session.child_killer.kill();
+            }
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn close_workspaces(&self, workspaces: &[(String, PathBuf)]) -> Result<(), String> {
+        for (workspace_id, workspace_root) in workspaces {
+            self.close_workspace(workspace_id, workspace_root)?;
+        }
         Ok(())
     }
 

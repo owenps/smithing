@@ -55,6 +55,18 @@ export interface Workspace {
   id: string;
   name: string;
   root: string;
+  discardable: boolean;
+}
+
+export interface OpenWorkspaceSummary {
+  id: string;
+  name: string;
+  root: string;
+  projectId: string;
+  projectName: string;
+  projectKind: ProjectKind;
+  gitBranch: string | null;
+  discardable: boolean;
 }
 
 export interface WorkspaceContext {
@@ -73,8 +85,22 @@ export interface CurrentWorkspaceResponse {
   tileState: WorkspaceTileState;
 }
 
+export interface WorkspaceOverview {
+  current: CurrentWorkspaceResponse | null;
+  currentWorkspaceId: string | null;
+  openWorkspaces: OpenWorkspaceSummary[];
+}
+
+export interface DirtyConfirmation {
+  dirtyWorkspaceCount: number;
+  changedFileCount: number;
+  samplePaths: string[];
+  message: string;
+}
+
 export interface ProjectAddResponse {
   current: CurrentWorkspaceResponse | null;
+  overview: WorkspaceOverview;
   project: RegisteredProject | null;
   duplicate: boolean;
   warnings: string[];
@@ -86,17 +112,51 @@ export interface WorkspaceCreateRequest {
 
 export interface WorkspaceCreateResponse {
   current: CurrentWorkspaceResponse;
+  overview: WorkspaceOverview;
   warnings: string[];
+}
+
+export interface WorkspaceDiscardRequest {
+  workspaceId: string;
+  confirmDirty: boolean;
+}
+
+export interface WorkspaceDiscardResponse {
+  overview: WorkspaceOverview;
+  dirtyConfirmation: DirtyConfirmation | null;
+  warnings: string[];
+}
+
+export interface WorkspaceSwitchRequest {
+  workspaceId: string;
+}
+
+export interface WorkspaceSwitchResponse {
+  overview: WorkspaceOverview;
 }
 
 export interface ProjectRemoveRequest {
   projectId: string;
+  confirmDirty?: boolean;
 }
 
 export interface ProjectRemoveResponse {
   current: CurrentWorkspaceResponse | null;
+  overview: WorkspaceOverview;
   project: RegisteredProject;
   removedWorkspaceCount: number;
+  dirtyConfirmation: DirtyConfirmation | null;
+  warnings: string[];
+}
+
+export interface ApplicationResetRequest {
+  confirmDirty: boolean;
+}
+
+export interface ApplicationResetResponse {
+  overview: WorkspaceOverview;
+  dirtyConfirmation: DirtyConfirmation | null;
+  warnings: string[];
 }
 
 export interface WorkspaceTileStateSaveRequest {
@@ -114,6 +174,7 @@ export type TerminalLaunch =
     };
 
 export interface TerminalCreateRequest {
+  workspaceId: string;
   tileId: string;
   cwd: string;
   cols: number;

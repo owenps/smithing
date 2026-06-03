@@ -13,6 +13,7 @@ import type { TerminalLaunch, TileResumeMetadata } from "./types";
 
 interface TerminalSessionRuntimeOptions {
   host: HTMLElement;
+  workspaceId: string;
   tileId: string;
   cwd: string;
   launch: TerminalLaunch;
@@ -74,6 +75,7 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
 
     const dimensions = this.fitAddon.proposeDimensions();
     void createTerminalSession({
+      workspaceId: options.workspaceId,
       tileId: options.tileId,
       cwd: options.cwd,
       cols: dimensions?.cols ?? 80,

@@ -25,12 +25,20 @@ A Workspace for a Git-backed Project whose canonical filesystem root is an isola
 _Avoid_: Checkout, clone, branch
 
 **Open Workspace**:
-A workspace currently present in Fluidity and eligible to have its Workspace Tile State restored after restart.
+A workspace currently present in Fluidity whether or not it is the one currently shown to the user. Open Workspaces are parallel working environments, not stopped sessions waiting to be resumed.
 _Avoid_: Tab, window, session
 
 **Current Workspace**:
 The open workspace currently being shown to the user.
 _Avoid_: Active tab, selected session, current window
+
+**Workspace Stack**:
+The ordered set of Open Workspaces used for workspace switching, with the most recently shown Workspace first.
+_Avoid_: Workspace tabs, workspace list, recent sessions, last-used order
+
+**Dirty Workspace**:
+A discardable Git-backed Workspace with uncommitted worktree or index changes that would be lost if its Fluidity-managed filesystem root were deleted.
+_Avoid_: Modified workspace, unsaved workspace
 
 **Workspace Attention State**:
 The user-facing attention status of an Open Workspace, such as unread activity or needing input.
@@ -49,7 +57,7 @@ Optional user- or project-chosen text prepended to generated Workspace Branch na
 _Avoid_: Fluidity prefix, branch namespace
 
 **Workspace Branch Discard Policy**:
-A Project Setting that controls whether discarding a Git-backed Workspace also deletes its Workspace Branch; the default is to keep the branch.
+A Project Setting that controls whether discarding a Git-backed Workspace also deletes its local Workspace Branch when safe; the default is to keep the branch. Remote branches are outside this policy.
 _Avoid_: Branch cleanup, auto-delete branch
 
 **Workspace Base Branch**:
@@ -61,7 +69,7 @@ The default workspace for a project that is not backed by git, rooted at the pro
 _Avoid_: Main workspace, default workspace
 
 **Discarded Workspace**:
-A workspace that has been intentionally removed from Fluidity and deleted from disk by the user.
+A discardable Workspace that has been intentionally removed from Fluidity by the user, causing its Fluidity-managed filesystem root to be deleted from disk. Home Workspaces rooted at Project roots are not discardable.
 _Avoid_: Archived workspace, closed workspace, hidden workspace
 
 **Tile**:
@@ -123,6 +131,14 @@ _Avoid_: Repository settings, folder settings
 **Registered Project**:
 A project root saved in Fluidity so its workspaces can be opened and managed later.
 _Avoid_: Open project, recent folder, repository bookmark, workspace
+
+**Project Disconnect**:
+The user action that removes a Registered Project from Fluidity, closes its Open Workspaces, and removes their Fluidity-managed filesystem roots without deleting the Project root or branches.
+_Avoid_: Delete project, remove repository, unregister project
+
+**Application Reset**:
+The user action that returns Fluidity to its unregistered starting state, closes all Open Workspaces, and removes Fluidity-managed filesystem roots without deleting Project roots or branches.
+_Avoid_: Factory reset, clear cache, uninstall
 
 **Project Registry**:
 The global collection of registered projects known to Fluidity.

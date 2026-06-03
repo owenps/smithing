@@ -1,0 +1,3 @@
+# Shared Integration catalog with adapters
+
+Fluidity represents third-party tool/platform knowledge as product-level Integrations, each of which can provide one or more Integration Tiles. Integration identity and stable Integration Tile facts live in a shared hand-authored JSON catalog consumed by Rust and TypeScript adapters; React owns icon/rendering details, while Rust owns launch, resume, persistence validation, and migration behavior. We chose this over Rust-owned catalog knowledge or a TypeScript-only catalog because Integrations span both UI and runtime seams, but codegen is not yet worth the extra machinery.

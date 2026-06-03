@@ -356,7 +356,7 @@ export function SettingsModal({
               <span className="settings-row-copy">
                 <span className="settings-row-title">Projects</span>
                 <span className="settings-row-description">
-                  Disconnect registered projects and close their active workspaces.
+                  Disconnect registered projects and remove their Fluidity-managed workspaces.
                 </span>
               </span>
               <span className="settings-row-control settings-row-action">
@@ -421,7 +421,10 @@ export function SettingsModal({
                 tabIndex={-1}
               >
                 <div className="settings-inline-panel-header settings-projects-header">
-                  <span>Disconnecting keeps project folders locally and closes workspaces.</span>
+                  <span>
+                    Disconnecting keeps project folders and branches, but removes managed
+                    workspaces.
+                  </span>
                   <button
                     className="settings-project-refresh-button"
                     type="button"

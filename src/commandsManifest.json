@@ -27,6 +27,18 @@
     "nativeAccelerator": "Cmd+Shift+N"
   },
   {
+    "id": "workspace.discard",
+    "title": "Discard Workspace",
+    "shortcutGroup": "General",
+    "shortcut": {
+      "key": "backspace",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "⌫"]
+    },
+    "nativeAccelerator": "Cmd+Shift+Backspace"
+  },
+  {
     "id": "tilePicker.open",
     "title": "Create New Tile",
     "shortcutGroup": "General",

@@ -1,13 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
-  CurrentWorkspaceResponse,
+  WorkspaceDiscardRequest,
+  WorkspaceDiscardResponse,
+  WorkspaceOverview,
   WorkspaceCreateRequest,
   WorkspaceCreateResponse,
+  WorkspaceSwitchRequest,
+  WorkspaceSwitchResponse,
   WorkspaceTileStateSaveRequest,
 } from "./types";
 
-export function getCurrentWorkspace(): Promise<CurrentWorkspaceResponse | null> {
-  return invoke<CurrentWorkspaceResponse | null>("workspace_current");
+export function getWorkspaceOverview(): Promise<WorkspaceOverview> {
+  return invoke<WorkspaceOverview>("workspace_overview");
 }
 
 export function saveWorkspaceTileState(request: WorkspaceTileStateSaveRequest): Promise<void> {
@@ -16,4 +20,14 @@ export function saveWorkspaceTileState(request: WorkspaceTileStateSaveRequest): 
 
 export function createWorkspace(request: WorkspaceCreateRequest): Promise<WorkspaceCreateResponse> {
   return invoke<WorkspaceCreateResponse>("workspace_create", { request });
+}
+
+export function discardWorkspace(
+  request: WorkspaceDiscardRequest,
+): Promise<WorkspaceDiscardResponse> {
+  return invoke<WorkspaceDiscardResponse>("workspace_discard", { request });
+}
+
+export function switchWorkspace(request: WorkspaceSwitchRequest): Promise<WorkspaceSwitchResponse> {
+  return invoke<WorkspaceSwitchResponse>("workspace_switch", { request });
 }

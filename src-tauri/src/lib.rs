@@ -26,6 +26,8 @@ const ADD_PROJECT_MENU_ID: &str = "project.add";
 const ADD_PROJECT_EVENT: &str = "app://add-project";
 const NEW_WORKSPACE_MENU_ID: &str = "workspace.new";
 const NEW_WORKSPACE_EVENT: &str = "app://new-workspace";
+const DISCARD_WORKSPACE_MENU_ID: &str = "workspace.discard";
+const DISCARD_WORKSPACE_EVENT: &str = "app://discard-workspace";
 const COMMANDS_MANIFEST_JSON: &str = include_str!("../../src/commandsManifest.json");
 const INTEGRATION_CATALOG_JSON: &str = include_str!("../../src/shared/integrationCatalog.json");
 const APP_STATE_FILE: &str = "app-state.json";
@@ -62,10 +64,10 @@ impl WorkspaceState {
         save_app_state(&self.state_path, app_state)
     }
 
-    fn current_workspace_root(&self) -> Result<String, String> {
+    fn current_workspace(&self) -> Result<OpenWorkspace, String> {
         let app_state = self.app_state.lock().map_err(lock_error)?;
         current_open_workspace(&app_state)
-            .map(|workspace| workspace.root.clone())
+            .cloned()
             .ok_or_else(|| "no workspace is open".to_string())
     }
 }
@@ -76,7 +78,10 @@ struct PersistedAppState {
     version: u32,
     projects: Vec<RegisteredProject>,
     open_workspaces: Vec<OpenWorkspace>,
-    current_workspace_id: Option<String>,
+    #[serde(default)]
+    workspace_stack: Vec<String>,
+    #[serde(default, rename = "currentWorkspaceId", skip_serializing)]
+    legacy_current_workspace_id: Option<String>,
     #[serde(default)]
     generated_workspace_branch_names: Vec<String>,
 }
@@ -87,7 +92,8 @@ impl Default for PersistedAppState {
             version: APP_STATE_VERSION,
             projects: Vec::new(),
             open_workspaces: Vec::new(),
-            current_workspace_id: None,
+            workspace_stack: Vec::new(),
+            legacy_current_workspace_id: None,
             generated_workspace_branch_names: Vec::new(),
         }
     }
@@ -102,6 +108,7 @@ struct OpenWorkspace {
     root: String,
     git_branch: Option<String>,
     tile_state: WorkspaceTileState,
+    #[serde(default, skip_serializing)]
     last_used_at: u64,
 }
 
@@ -150,6 +157,7 @@ struct WorkspaceTileStateSaveRequest {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TerminalCreateRequest {
+    workspace_id: String,
     tile_id: String,
     cwd: String,
     cols: u16,
@@ -266,6 +274,43 @@ struct CurrentWorkspaceResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct WorkspaceOverview {
+    current: Option<CurrentWorkspaceResponse>,
+    current_workspace_id: Option<String>,
+    open_workspaces: Vec<OpenWorkspaceSummary>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OpenWorkspaceSummary {
+    id: String,
+    name: String,
+    root: String,
+    project_id: String,
+    project_name: String,
+    project_kind: ProjectKind,
+    git_branch: Option<String>,
+    discardable: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirtyWorkspaceSummary {
+    changed_file_count: usize,
+    sample_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DirtyConfirmation {
+    dirty_workspace_count: usize,
+    changed_file_count: usize,
+    sample_paths: Vec<String>,
+    message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct WorkspaceContext {
     project: ProjectContext,
     workspace: WorkspaceContextInfo,
@@ -284,12 +329,14 @@ struct WorkspaceContextInfo {
     id: String,
     name: String,
     root: String,
+    discardable: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectAddResponse {
     current: Option<CurrentWorkspaceResponse>,
+    overview: WorkspaceOverview,
     project: Option<RegisteredProject>,
     duplicate: bool,
     warnings: Vec<String>,
@@ -305,6 +352,7 @@ struct WorkspaceCreateRequest {
 #[serde(rename_all = "camelCase")]
 struct WorkspaceCreateResponse {
     current: CurrentWorkspaceResponse,
+    overview: WorkspaceOverview,
     warnings: Vec<String>,
 }
 
@@ -312,14 +360,62 @@ struct WorkspaceCreateResponse {
 #[serde(rename_all = "camelCase")]
 struct ProjectRemoveRequest {
     project_id: String,
+    #[serde(default)]
+    confirm_dirty: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceDiscardRequest {
+    workspace_id: String,
+    #[serde(default)]
+    confirm_dirty: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceSwitchRequest {
+    workspace_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplicationResetRequest {
+    #[serde(default)]
+    confirm_dirty: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ProjectRemoveResponse {
     current: Option<CurrentWorkspaceResponse>,
+    overview: WorkspaceOverview,
     project: RegisteredProject,
     removed_workspace_count: usize,
+    dirty_confirmation: Option<DirtyConfirmation>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceDiscardResponse {
+    overview: WorkspaceOverview,
+    dirty_confirmation: Option<DirtyConfirmation>,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceSwitchResponse {
+    overview: WorkspaceOverview,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ApplicationResetResponse {
+    overview: WorkspaceOverview,
+    dirty_confirmation: Option<DirtyConfirmation>,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -353,7 +449,15 @@ fn workspace_current(
     state: State<'_, WorkspaceState>,
 ) -> Result<Option<CurrentWorkspaceResponse>, String> {
     let app_state = state.app_state.lock().map_err(lock_error)?;
-    Ok(current_workspace_response(&app_state))
+    Ok(workspace_overview_for_state(&app_state).current)
+}
+
+#[tauri::command]
+fn workspace_overview(state: State<'_, WorkspaceState>) -> Result<WorkspaceOverview, String> {
+    let mut app_state = state.app_state.lock().map_err(lock_error)?;
+    normalize_workspace_stack(&mut app_state);
+    state.save(&app_state)?;
+    Ok(workspace_overview_for_state(&app_state))
 }
 
 #[tauri::command]
@@ -372,6 +476,11 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
     else {
         return Ok(ProjectAddResponse {
             current: None,
+            overview: WorkspaceOverview {
+                current: None,
+                current_workspace_id: None,
+                open_workspaces: Vec::new(),
+            },
             project: None,
             duplicate: false,
             warnings: Vec::new(),
@@ -407,11 +516,14 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
     let mut warnings = Vec::new();
     let workspace_id =
         select_or_create_initial_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
-    app_state.current_workspace_id = Some(workspace_id);
+    set_current_workspace(&mut app_state, &workspace_id);
+    normalize_workspace_stack(&mut app_state);
     state.save(&app_state)?;
+    let overview = workspace_overview_for_state(&app_state);
 
     Ok(ProjectAddResponse {
-        current: current_workspace_response(&app_state),
+        current: overview.current.clone(),
+        overview,
         project: Some(project),
         duplicate,
         warnings,
@@ -443,17 +555,26 @@ fn workspace_create(
     let workspace = create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
     let workspace_id = workspace.id.clone();
     app_state.open_workspaces.push(workspace);
-    app_state.current_workspace_id = Some(workspace_id);
+    set_current_workspace(&mut app_state, &workspace_id);
+    normalize_workspace_stack(&mut app_state);
     state.save(&app_state)?;
 
-    let current = current_workspace_response(&app_state)
+    let overview = workspace_overview_for_state(&app_state);
+    let current = overview
+        .current
+        .clone()
         .ok_or_else(|| "created workspace is unavailable".to_string())?;
-    Ok(WorkspaceCreateResponse { current, warnings })
+    Ok(WorkspaceCreateResponse {
+        current,
+        overview,
+        warnings,
+    })
 }
 
 #[tauri::command]
 fn project_remove(
     state: State<'_, WorkspaceState>,
+    terminal_state: State<'_, TerminalState>,
     request: ProjectRemoveRequest,
 ) -> Result<ProjectRemoveResponse, String> {
     let mut app_state = state.app_state.lock().map_err(lock_error)?;
@@ -465,21 +586,147 @@ fn project_remove(
         return Err("project not found".to_string());
     };
 
-    let project = app_state.projects.remove(project_index);
-    let original_workspace_count = app_state.open_workspaces.len();
-    app_state
+    let project = app_state.projects[project_index].clone();
+    let workspace_ids = app_state
         .open_workspaces
-        .retain(|workspace| workspace.project_id != project.id);
-    let removed_workspace_count = original_workspace_count - app_state.open_workspaces.len();
+        .iter()
+        .filter(|workspace| workspace.project_id == project.id)
+        .map(|workspace| workspace.id.clone())
+        .collect::<Vec<_>>();
+    let workspaces = workspaces_by_ids(&app_state, &workspace_ids);
+    let cleanup_workspaces =
+        cleanup_targets_for_managed_workspaces(&state.app_data_dir, &workspaces);
 
-    app_state.current_workspace_id =
-        current_open_workspace(&app_state).map(|workspace| workspace.id.clone());
+    if let Some(dirty_confirmation) = dirty_confirmation_for_workspaces(&cleanup_workspaces)? {
+        if !request.confirm_dirty {
+            return Ok(ProjectRemoveResponse {
+                current: workspace_overview_for_state(&app_state).current,
+                overview: workspace_overview_for_state(&app_state),
+                project,
+                removed_workspace_count: 0,
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    close_terminal_workspaces(&terminal_state, &workspaces)?;
+
+    if let Some(dirty_confirmation) = dirty_confirmation_for_workspaces(&cleanup_workspaces)? {
+        if !request.confirm_dirty {
+            return Ok(ProjectRemoveResponse {
+                current: workspace_overview_for_state(&app_state).current,
+                overview: workspace_overview_for_state(&app_state),
+                project,
+                removed_workspace_count: 0,
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    let mut warnings = Vec::new();
+    remove_workspace_roots(
+        &state.app_data_dir,
+        &cleanup_workspaces,
+        request.confirm_dirty,
+        &mut warnings,
+    )?;
+
+    let project = app_state.projects.remove(project_index);
+    let removed_workspace_count = remove_workspaces_from_state(&mut app_state, &workspace_ids);
+    normalize_workspace_stack(&mut app_state);
     state.save(&app_state)?;
+    let overview = workspace_overview_for_state(&app_state);
 
     Ok(ProjectRemoveResponse {
-        current: current_workspace_response(&app_state),
+        current: overview.current.clone(),
+        overview,
         project,
         removed_workspace_count,
+        dirty_confirmation: None,
+        warnings,
+    })
+}
+
+#[tauri::command]
+fn workspace_discard(
+    state: State<'_, WorkspaceState>,
+    terminal_state: State<'_, TerminalState>,
+    request: WorkspaceDiscardRequest,
+) -> Result<WorkspaceDiscardResponse, String> {
+    let mut app_state = state.app_state.lock().map_err(lock_error)?;
+    let target = workspace_cleanup_target(&app_state, &request.workspace_id)?;
+    if !workspace_discardable(&state.app_data_dir, &target.project, &target.workspace) {
+        return Err("workspace is not discardable".to_string());
+    }
+
+    if let Some(dirty_confirmation) =
+        dirty_confirmation_for_workspaces(std::slice::from_ref(&target))?
+    {
+        if !request.confirm_dirty {
+            return Ok(WorkspaceDiscardResponse {
+                overview: workspace_overview_for_state(&app_state),
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    close_terminal_workspaces(&terminal_state, std::slice::from_ref(&target))?;
+
+    if let Some(dirty_confirmation) =
+        dirty_confirmation_for_workspaces(std::slice::from_ref(&target))?
+    {
+        if !request.confirm_dirty {
+            return Ok(WorkspaceDiscardResponse {
+                overview: workspace_overview_for_state(&app_state),
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    let mut warnings = Vec::new();
+    remove_workspace_roots(
+        &state.app_data_dir,
+        std::slice::from_ref(&target),
+        request.confirm_dirty,
+        &mut warnings,
+    )?;
+    remove_workspaces_from_state(&mut app_state, &[request.workspace_id]);
+    normalize_workspace_stack(&mut app_state);
+    state.save(&app_state)?;
+
+    Ok(WorkspaceDiscardResponse {
+        overview: workspace_overview_for_state(&app_state),
+        dirty_confirmation: None,
+        warnings,
+    })
+}
+
+#[tauri::command]
+fn workspace_switch(
+    state: State<'_, WorkspaceState>,
+    request: WorkspaceSwitchRequest,
+) -> Result<WorkspaceSwitchResponse, String> {
+    let mut app_state = state.app_state.lock().map_err(lock_error)?;
+    let Some(workspace) = app_state
+        .open_workspaces
+        .iter()
+        .find(|workspace| workspace.id == request.workspace_id)
+    else {
+        return Err("workspace not found".to_string());
+    };
+    if !workspace_root_available(workspace) {
+        return Err("workspace root is missing".to_string());
+    }
+
+    set_current_workspace(&mut app_state, &request.workspace_id);
+    normalize_workspace_stack(&mut app_state);
+    state.save(&app_state)?;
+    Ok(WorkspaceSwitchResponse {
+        overview: workspace_overview_for_state(&app_state),
     })
 }
 
@@ -505,12 +752,64 @@ fn workspace_tile_state_save(
 fn application_reset(
     workspace_state: State<'_, WorkspaceState>,
     terminal_state: State<'_, TerminalState>,
-) -> Result<(), String> {
+    request: ApplicationResetRequest,
+) -> Result<ApplicationResetResponse, String> {
     let mut app_state = workspace_state.app_state.lock().map_err(lock_error)?;
+    let workspaces = app_state
+        .open_workspaces
+        .iter()
+        .filter_map(|workspace| {
+            app_state
+                .projects
+                .iter()
+                .find(|project| project.id == workspace.project_id)
+                .map(|project| WorkspaceCleanupTarget {
+                    workspace: workspace.clone(),
+                    project: project.clone(),
+                })
+        })
+        .collect::<Vec<_>>();
+    let cleanup_workspaces =
+        cleanup_targets_for_managed_workspaces(&workspace_state.app_data_dir, &workspaces);
+
+    if let Some(dirty_confirmation) = dirty_confirmation_for_workspaces(&cleanup_workspaces)? {
+        if !request.confirm_dirty {
+            return Ok(ApplicationResetResponse {
+                overview: workspace_overview_for_state(&app_state),
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    terminal_state.close_all()?;
+
+    if let Some(dirty_confirmation) = dirty_confirmation_for_workspaces(&cleanup_workspaces)? {
+        if !request.confirm_dirty {
+            return Ok(ApplicationResetResponse {
+                overview: workspace_overview_for_state(&app_state),
+                dirty_confirmation: Some(dirty_confirmation),
+                warnings: Vec::new(),
+            });
+        }
+    }
+
+    let mut warnings = Vec::new();
+    remove_workspace_roots(
+        &workspace_state.app_data_dir,
+        &cleanup_workspaces,
+        request.confirm_dirty,
+        &mut warnings,
+    )?;
+
     *app_state = PersistedAppState::default();
     workspace_state.save(&app_state)?;
 
-    terminal_state.close_all()
+    Ok(ApplicationResetResponse {
+        overview: workspace_overview_for_state(&app_state),
+        dirty_confirmation: None,
+        warnings,
+    })
 }
 
 #[tauri::command]
@@ -520,7 +819,7 @@ fn terminal_create(
     workspace_state: State<'_, WorkspaceState>,
     request: TerminalCreateRequest,
 ) -> Result<TerminalCreateResponse, String> {
-    let cwd = normalize_cwd(&workspace_state, &request.cwd)?;
+    let cwd = normalize_cwd(&workspace_state, &request.workspace_id, &request.cwd)?;
     let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
     let tool_tile = tool_integration_tile_for_launch(&request.launch)?;
     if let Some(tool_tile) = &tool_tile {
@@ -531,6 +830,7 @@ fn terminal_create(
     let response = terminal_state.create(
         app,
         TerminalSessionCreateRequest {
+            workspace_id: request.workspace_id,
             tile_id: request.tile_id,
             cwd,
             shell,
@@ -593,6 +893,9 @@ pub fn run() {
         .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             workspace_current,
+            workspace_overview,
+            workspace_discard,
+            workspace_switch,
             project_list,
             project_add,
             project_remove,
@@ -620,6 +923,9 @@ pub fn run() {
                 }
                 if event.id() == NEW_WORKSPACE_MENU_ID {
                     let _ = app.emit(NEW_WORKSPACE_EVENT, ());
+                }
+                if event.id() == DISCARD_WORKSPACE_MENU_ID {
+                    let _ = app.emit(DISCARD_WORKSPACE_EVENT, ());
                 }
             });
 
@@ -662,6 +968,15 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
         Some(NativeIcon::Add),
         new_workspace_accelerator.as_deref(),
     )?;
+    let discard_workspace_accelerator = native_accelerator_for_command(DISCARD_WORKSPACE_MENU_ID);
+    let discard_workspace = IconMenuItem::with_id_and_native_icon(
+        app,
+        DISCARD_WORKSPACE_MENU_ID,
+        "Discard Workspace",
+        true,
+        None,
+        discard_workspace_accelerator.as_deref(),
+    )?;
 
     Menu::with_items(
         app,
@@ -691,6 +1006,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
                 true,
                 &[
                     &new_workspace,
+                    &discard_workspace,
                     &add_project,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::close_window(app, None)?,
@@ -710,6 +1026,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
                 true,
                 &[
                     &new_workspace,
+                    &discard_workspace,
                     &add_project,
                     &PredefinedMenuItem::separator(app)?,
                     &settings,
@@ -778,6 +1095,8 @@ fn load_app_state(state_path: &Path) -> PersistedAppState {
     for workspace in &mut app_state.open_workspaces {
         workspace.tile_state = sanitize_tile_state(workspace.tile_state.clone());
     }
+    migrate_workspace_stack(&mut app_state);
+    normalize_workspace_stack(&mut app_state);
 
     app_state
 }
@@ -803,6 +1122,15 @@ fn backup_corrupt_app_state(state_path: &Path) {
     let _ = fs::rename(state_path, backup_path);
 }
 
+fn workspace_overview_for_state(app_state: &PersistedAppState) -> WorkspaceOverview {
+    WorkspaceOverview {
+        current: current_workspace_response(app_state),
+        current_workspace_id: current_open_workspace(app_state)
+            .map(|workspace| workspace.id.clone()),
+        open_workspaces: workspace_summaries_for_state(app_state),
+    }
+}
+
 fn current_workspace_response(app_state: &PersistedAppState) -> Option<CurrentWorkspaceResponse> {
     let workspace = current_open_workspace(app_state)?;
     let project = app_state
@@ -818,21 +1146,12 @@ fn current_workspace_response(app_state: &PersistedAppState) -> Option<CurrentWo
 }
 
 fn current_open_workspace(app_state: &PersistedAppState) -> Option<&OpenWorkspace> {
-    app_state
-        .current_workspace_id
-        .as_ref()
-        .and_then(|workspace_id| {
-            app_state.open_workspaces.iter().find(|workspace| {
-                &workspace.id == workspace_id && workspace_root_available(workspace)
-            })
-        })
-        .or_else(|| {
-            app_state
-                .open_workspaces
-                .iter()
-                .filter(|workspace| workspace_root_available(workspace))
-                .max_by_key(|workspace| workspace.last_used_at)
-        })
+    app_state.workspace_stack.iter().find_map(|workspace_id| {
+        app_state
+            .open_workspaces
+            .iter()
+            .find(|workspace| &workspace.id == workspace_id && workspace_root_available(workspace))
+    })
 }
 
 fn select_or_create_initial_workspace(
@@ -841,21 +1160,30 @@ fn select_or_create_initial_workspace(
     project: &RegisteredProject,
     warnings: &mut Vec<String>,
 ) -> Result<String, String> {
-    if let Some(workspace) = app_state
-        .open_workspaces
-        .iter_mut()
-        .filter(|workspace| workspace_selectable_for_project(project, workspace))
-        .max_by_key(|workspace| workspace.last_used_at)
-    {
-        workspace.last_used_at = now_unix_seconds();
-        workspace.git_branch =
-            observed_git_branch(project.kind, &workspace.root).or(workspace.git_branch.clone());
-        if project.kind == ProjectKind::Git {
-            if let Some(branch) = workspace.git_branch.clone() {
-                workspace.name = branch;
+    if let Some(workspace_id) = app_state.workspace_stack.iter().find_map(|workspace_id| {
+        app_state
+            .open_workspaces
+            .iter()
+            .find(|workspace| {
+                &workspace.id == workspace_id
+                    && workspace_selectable_for_project(project, workspace)
+            })
+            .map(|workspace| workspace.id.clone())
+    }) {
+        if let Some(workspace) = app_state
+            .open_workspaces
+            .iter_mut()
+            .find(|workspace| workspace.id == workspace_id)
+        {
+            workspace.git_branch =
+                observed_git_branch(project.kind, &workspace.root).or(workspace.git_branch.clone());
+            if project.kind == ProjectKind::Git {
+                if let Some(branch) = workspace.git_branch.clone() {
+                    workspace.name = branch;
+                }
             }
         }
-        return Ok(workspace.id.clone());
+        return Ok(workspace_id);
     }
 
     let workspace = match project.kind {
@@ -1231,6 +1559,263 @@ fn tiles_overlap(a: &PersistedTile, b: &PersistedTile) -> bool {
     a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
+#[derive(Debug, Clone)]
+struct WorkspaceCleanupTarget {
+    workspace: OpenWorkspace,
+    project: RegisteredProject,
+}
+
+fn migrate_workspace_stack(app_state: &mut PersistedAppState) {
+    if !app_state.workspace_stack.is_empty() {
+        return;
+    }
+
+    if let Some(workspace_id) = app_state.legacy_current_workspace_id.clone() {
+        app_state.workspace_stack.push(workspace_id);
+    }
+
+    let mut remaining = app_state.open_workspaces.clone();
+    remaining.sort_by_key(|workspace| std::cmp::Reverse(workspace.last_used_at));
+    for workspace in remaining {
+        if !app_state.workspace_stack.contains(&workspace.id) {
+            app_state.workspace_stack.push(workspace.id);
+        }
+    }
+}
+
+fn normalize_workspace_stack(app_state: &mut PersistedAppState) {
+    let open_ids = app_state
+        .open_workspaces
+        .iter()
+        .map(|workspace| workspace.id.clone())
+        .collect::<HashSet<_>>();
+    let mut seen = HashSet::new();
+    app_state.workspace_stack.retain(|workspace_id| {
+        open_ids.contains(workspace_id) && seen.insert(workspace_id.clone())
+    });
+
+    for workspace in &app_state.open_workspaces {
+        if !seen.contains(&workspace.id) {
+            app_state.workspace_stack.push(workspace.id.clone());
+            seen.insert(workspace.id.clone());
+        }
+    }
+}
+
+fn set_current_workspace(app_state: &mut PersistedAppState, workspace_id: &str) {
+    app_state.workspace_stack.retain(|id| id != workspace_id);
+    app_state
+        .workspace_stack
+        .insert(0, workspace_id.to_string());
+}
+
+fn remove_workspaces_from_state(
+    app_state: &mut PersistedAppState,
+    workspace_ids: &[String],
+) -> usize {
+    let ids = workspace_ids.iter().cloned().collect::<HashSet<_>>();
+    let original_workspace_count = app_state.open_workspaces.len();
+    app_state
+        .open_workspaces
+        .retain(|workspace| !ids.contains(&workspace.id));
+    app_state
+        .workspace_stack
+        .retain(|workspace_id| !ids.contains(workspace_id));
+    original_workspace_count - app_state.open_workspaces.len()
+}
+
+fn workspace_cleanup_target(
+    app_state: &PersistedAppState,
+    workspace_id: &str,
+) -> Result<WorkspaceCleanupTarget, String> {
+    let workspace = app_state
+        .open_workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .cloned()
+        .ok_or_else(|| "workspace not found".to_string())?;
+    let project = app_state
+        .projects
+        .iter()
+        .find(|project| project.id == workspace.project_id)
+        .cloned()
+        .ok_or_else(|| "workspace project not found".to_string())?;
+    Ok(WorkspaceCleanupTarget { workspace, project })
+}
+
+fn workspaces_by_ids(
+    app_state: &PersistedAppState,
+    workspace_ids: &[String],
+) -> Vec<WorkspaceCleanupTarget> {
+    workspace_ids
+        .iter()
+        .filter_map(|workspace_id| workspace_cleanup_target(app_state, workspace_id).ok())
+        .collect()
+}
+
+fn cleanup_targets_for_managed_workspaces(
+    app_data_dir: &Path,
+    targets: &[WorkspaceCleanupTarget],
+) -> Vec<WorkspaceCleanupTarget> {
+    targets
+        .iter()
+        .filter(|target| workspace_discardable(app_data_dir, &target.project, &target.workspace))
+        .cloned()
+        .collect()
+}
+
+fn close_terminal_workspaces(
+    terminal_state: &TerminalState,
+    targets: &[WorkspaceCleanupTarget],
+) -> Result<(), String> {
+    let workspaces = targets
+        .iter()
+        .map(|target| {
+            (
+                target.workspace.id.clone(),
+                PathBuf::from(&target.workspace.root),
+            )
+        })
+        .collect::<Vec<_>>();
+    terminal_state.close_workspaces(&workspaces)
+}
+
+fn dirty_confirmation_for_workspaces(
+    targets: &[WorkspaceCleanupTarget],
+) -> Result<Option<DirtyConfirmation>, String> {
+    let summaries = targets
+        .iter()
+        .filter_map(
+            |target| match dirty_workspace_summary(&target.workspace.root) {
+                Ok(Some(summary)) => Some(Ok(summary)),
+                Ok(None) => None,
+                Err(error) => Some(Err(error)),
+            },
+        )
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if summaries.is_empty() {
+        return Ok(None);
+    }
+
+    let changed_file_count = summaries
+        .iter()
+        .map(|summary| summary.changed_file_count)
+        .sum();
+    let sample_paths = summaries
+        .iter()
+        .flat_map(|summary| summary.sample_paths.clone())
+        .take(10)
+        .collect::<Vec<_>>();
+
+    Ok(Some(DirtyConfirmation {
+        dirty_workspace_count: summaries.len(),
+        changed_file_count,
+        sample_paths,
+        message: "Uncommitted Workspace changes will be deleted.".to_string(),
+    }))
+}
+
+fn dirty_workspace_summary(root: &str) -> Result<Option<DirtyWorkspaceSummary>, String> {
+    if !Path::new(root).is_dir() {
+        return Ok(None);
+    }
+
+    let status = run_git_command(root, &["status", "--porcelain", "--untracked-files=all"])?;
+    let paths = status
+        .lines()
+        .filter_map(git_status_path)
+        .collect::<Vec<_>>();
+
+    if paths.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(DirtyWorkspaceSummary {
+        changed_file_count: paths.len(),
+        sample_paths: paths.into_iter().take(10).collect(),
+    }))
+}
+
+fn git_status_path(line: &str) -> Option<String> {
+    let path = line.get(3..)?.trim();
+    if path.is_empty() {
+        None
+    } else if let Some((_, right)) = path.split_once(" -> ") {
+        Some(right.to_string())
+    } else {
+        Some(path.to_string())
+    }
+}
+
+fn remove_workspace_roots(
+    app_data_dir: &Path,
+    targets: &[WorkspaceCleanupTarget],
+    force: bool,
+    warnings: &mut Vec<String>,
+) -> Result<(), String> {
+    for target in targets {
+        remove_workspace_root(app_data_dir, target, force, warnings)?;
+    }
+    Ok(())
+}
+
+fn remove_workspace_root(
+    app_data_dir: &Path,
+    target: &WorkspaceCleanupTarget,
+    force: bool,
+    warnings: &mut Vec<String>,
+) -> Result<(), String> {
+    let root = Path::new(&target.workspace.root);
+    if !root.is_dir() {
+        let _ = git_command_succeeds(&target.project.root, &["worktree", "prune"]);
+        warnings.push(format!(
+            "Workspace {} was already missing from disk.",
+            target.workspace.name
+        ));
+        return Ok(());
+    }
+
+    if !workspace_discardable(app_data_dir, &target.project, &target.workspace) {
+        return Err("workspace root is not managed by Fluidity".to_string());
+    }
+
+    if Path::new(&target.project.root).is_dir() {
+        let mut args = vec!["worktree", "remove"];
+        if force {
+            args.push("--force");
+        }
+        args.push(&target.workspace.root);
+        run_git_command(&target.project.root, &args).map(|_| ())
+    } else {
+        fs::remove_dir_all(root).map_err(|error| error.to_string())
+    }
+}
+
+fn workspace_discardable(
+    app_data_dir: &Path,
+    project: &RegisteredProject,
+    workspace: &OpenWorkspace,
+) -> bool {
+    project.kind == ProjectKind::Git
+        && managed_workspace_root(app_data_dir, Path::new(&workspace.root))
+}
+
+fn managed_workspace_root(app_data_dir: &Path, root: &Path) -> bool {
+    let managed_root = app_data_dir.join("workspaces");
+    if root.is_dir() {
+        let Ok(root) = root.canonicalize() else {
+            return false;
+        };
+        let Ok(managed_root) = managed_root.canonicalize() else {
+            return false;
+        };
+        root.starts_with(managed_root)
+    } else {
+        root.starts_with(managed_root)
+    }
+}
+
 fn workspace_root_available(workspace: &OpenWorkspace) -> bool {
     Path::new(&workspace.root).is_dir()
 }
@@ -1277,9 +1862,49 @@ fn workspace_context_for_project_and_workspace(
             id: workspace.id.clone(),
             name: workspace_name,
             root: workspace.root.clone(),
+            discardable: project.kind == ProjectKind::Git,
         },
         git_branch,
     }
+}
+
+fn workspace_summaries_for_state(app_state: &PersistedAppState) -> Vec<OpenWorkspaceSummary> {
+    app_state
+        .workspace_stack
+        .iter()
+        .filter_map(|workspace_id| {
+            let workspace = app_state
+                .open_workspaces
+                .iter()
+                .find(|workspace| &workspace.id == workspace_id)?;
+            let project = app_state
+                .projects
+                .iter()
+                .find(|project| project.id == workspace.project_id)?;
+            let git_branch = observed_git_branch(project.kind, &workspace.root)
+                .or_else(|| workspace.git_branch.clone());
+            let name = if project.kind == ProjectKind::Git {
+                git_branch.clone().unwrap_or_else(|| workspace.name.clone())
+            } else {
+                workspace.name.clone()
+            };
+
+            Some(OpenWorkspaceSummary {
+                id: workspace.id.clone(),
+                name,
+                root: workspace.root.clone(),
+                project_id: project.id.clone(),
+                project_name: project.name.clone(),
+                project_kind: project.kind,
+                git_branch,
+                discardable: workspace_discardable_for_summary(project),
+            })
+        })
+        .collect()
+}
+
+fn workspace_discardable_for_summary(project: &RegisteredProject) -> bool {
+    project.kind == ProjectKind::Git
 }
 
 fn project_name_for_root(root: &Path) -> String {
@@ -1568,9 +2193,16 @@ fn shell_escape_arg(arg: &str) -> String {
     format!("'{}'", arg.replace('\'', "'\\''"))
 }
 
-fn normalize_cwd(workspace_state: &WorkspaceState, cwd: &str) -> Result<PathBuf, String> {
-    let workspace_root = workspace_state.current_workspace_root()?;
-    let workspace_root = PathBuf::from(workspace_root)
+fn normalize_cwd(
+    workspace_state: &WorkspaceState,
+    workspace_id: &str,
+    cwd: &str,
+) -> Result<PathBuf, String> {
+    let workspace = workspace_state.current_workspace()?;
+    if workspace.id != workspace_id {
+        return Err("terminal workspace must be the current workspace".to_string());
+    }
+    let workspace_root = PathBuf::from(workspace.root)
         .canonicalize()
         .map_err(|error| error.to_string())?;
     let path = Path::new(cwd);
@@ -1705,6 +2337,63 @@ mod tests {
     }
 
     #[test]
+    fn workspace_stack_migrates_legacy_current_first_then_last_used() {
+        let mut app_state = PersistedAppState {
+            version: APP_STATE_VERSION,
+            projects: Vec::new(),
+            open_workspaces: vec![
+                test_workspace("workspace-a", 10),
+                test_workspace("workspace-b", 30),
+            ],
+            workspace_stack: Vec::new(),
+            legacy_current_workspace_id: Some("workspace-a".to_string()),
+            generated_workspace_branch_names: Vec::new(),
+        };
+
+        migrate_workspace_stack(&mut app_state);
+        normalize_workspace_stack(&mut app_state);
+
+        assert_eq!(
+            app_state.workspace_stack,
+            vec!["workspace-a", "workspace-b"]
+        );
+    }
+
+    #[test]
+    fn remove_workspaces_from_state_removes_stack_entries() {
+        let mut app_state = PersistedAppState {
+            version: APP_STATE_VERSION,
+            projects: Vec::new(),
+            open_workspaces: vec![
+                test_workspace("workspace-a", 0),
+                test_workspace("workspace-b", 0),
+            ],
+            workspace_stack: vec!["workspace-b".to_string(), "workspace-a".to_string()],
+            legacy_current_workspace_id: None,
+            generated_workspace_branch_names: Vec::new(),
+        };
+
+        let removed = remove_workspaces_from_state(&mut app_state, &["workspace-b".to_string()]);
+
+        assert_eq!(removed, 1);
+        assert_eq!(app_state.workspace_stack, vec!["workspace-a"]);
+        assert_eq!(app_state.open_workspaces.len(), 1);
+    }
+
+    #[test]
+    fn git_status_path_extracts_renames_and_normal_paths() {
+        assert_eq!(
+            git_status_path(" M src/main.rs"),
+            Some("src/main.rs".to_string())
+        );
+        assert_eq!(
+            git_status_path("R  old/name.rs -> new/name.rs"),
+            Some("new/name.rs".to_string())
+        );
+        assert_eq!(git_status_path(""), None);
+    }
+
+    #[test]
     fn sanitize_tile_state_migrates_known_initial_commands_to_tool_tiles() {
         let tile_state = WorkspaceTileState {
             tiles: vec![tile_with_initial_command("claude")],
@@ -1770,6 +2459,18 @@ mod tests {
             integration_tile_id: Some("cli".to_string()),
             resume,
             tool_id: None,
+        }
+    }
+
+    fn test_workspace(id: &str, last_used_at: u64) -> OpenWorkspace {
+        OpenWorkspace {
+            id: id.to_string(),
+            project_id: "project-test".to_string(),
+            name: id.to_string(),
+            root: "/tmp/fluidity-test".to_string(),
+            git_branch: None,
+            tile_state: default_workspace_tile_state(),
+            last_used_at,
         }
     }
 

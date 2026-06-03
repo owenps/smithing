@@ -27,6 +27,7 @@ import {
   GRID_COLUMNS,
   GRID_ROWS,
   type CurrentWorkspaceResponse,
+  type DirtyConfirmation,
   type RegisteredProject,
   type TerminalLaunch,
   type Tile,
@@ -35,7 +36,12 @@ import {
   type WorkspaceContext,
   type WorkspaceTileState,
 } from "./types";
-import { createWorkspace, getCurrentWorkspace, saveWorkspaceTileState } from "./workspaceClient";
+import {
+  createWorkspace,
+  discardWorkspace,
+  getWorkspaceOverview,
+  saveWorkspaceTileState,
+} from "./workspaceClient";
 
 interface LayoutState {
   tiles: Tile[];
@@ -82,6 +88,7 @@ export function App() {
   const [contextLoaded, setContextLoaded] = useState(false);
   const [context, setContext] = useState<WorkspaceContext | null>(null);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
+  const [currentWorkspaceDiscardable, setCurrentWorkspaceDiscardable] = useState(false);
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -136,10 +143,12 @@ export function App() {
   }, [settings]);
 
   useEffect(() => {
-    void getCurrentWorkspace()
-      .then((current) => {
+    void getWorkspaceOverview()
+      .then((overview) => {
+        const current = overview.current;
         setContext(current?.context ?? null);
         setCurrentWorkspaceId(current?.workspaceId ?? null);
+        setCurrentWorkspaceDiscardable(current?.context.workspace.discardable ?? false);
         if (current) {
           setLayout(createLayoutFromTileState(current.tileState));
         }
@@ -147,10 +156,11 @@ export function App() {
       .catch(() => {
         setContext({
           project: { name: APP_NAME, root: "Unavailable outside Tauri", kind: "plain" },
-          workspace: { id: "workspace-dev", name: "POC", root: "." },
+          workspace: { id: "workspace-dev", name: "POC", root: ".", discardable: false },
           gitBranch: null,
         });
         setCurrentWorkspaceId(null);
+        setCurrentWorkspaceDiscardable(false);
       })
       .finally(() => setContextLoaded(true));
   }, []);
@@ -180,9 +190,19 @@ export function App() {
     [addToast],
   );
 
+  const confirmDirtyDeletion = useCallback((confirmation: DirtyConfirmation) => {
+    const sample = confirmation.samplePaths.length
+      ? `\n\nChanged files:\n${confirmation.samplePaths.map((path) => `• ${path}`).join("\n")}`
+      : "";
+    return window.confirm(
+      `${confirmation.message}\n\n${confirmation.dirtyWorkspaceCount} dirty workspace${confirmation.dirtyWorkspaceCount === 1 ? "" : "s"}; ${confirmation.changedFileCount} changed file${confirmation.changedFileCount === 1 ? "" : "s"}.${sample}\n\nDiscard these changes?`,
+    );
+  }, []);
+
   const applyCurrentWorkspace = useCallback((current: CurrentWorkspaceResponse | null) => {
     setContext(current?.context ?? null);
     setCurrentWorkspaceId(current?.workspaceId ?? null);
+    setCurrentWorkspaceDiscardable(current?.context.workspace.discardable ?? false);
     setContextLoaded(true);
     setLayout(current ? createLayoutFromTileState(current.tileState) : createInitialLayout());
   }, []);
@@ -246,9 +266,9 @@ export function App() {
     void addProject()
       .then((response) => {
         refreshProjects();
-        if (!response.current) return;
+        if (!response.overview.current) return;
 
-        applyCurrentWorkspace(response.current);
+        applyCurrentWorkspace(response.overview.current);
         setTilePickerOpen(false);
         setWorkspacePickerOpen(false);
         setSettingsOpen(false);
@@ -256,7 +276,7 @@ export function App() {
         addToast({
           severity: response.duplicate ? "info" : "success",
           title: response.duplicate ? "Project already registered" : "Project added",
-          detail: response.current.context.workspace.root,
+          detail: response.overview.current.context.workspace.root,
         });
       })
       .catch((error) => {
@@ -272,7 +292,7 @@ export function App() {
     (projectId: string) => {
       void createWorkspace({ projectId })
         .then((response) => {
-          applyCurrentWorkspace(response.current);
+          applyCurrentWorkspace(response.overview.current);
           setWorkspacePickerOpen(false);
           setTilePickerOpen(false);
           setSettingsOpen(false);
@@ -280,7 +300,7 @@ export function App() {
           addToast({
             severity: "success",
             title: "Workspace created",
-            detail: response.current.context.workspace.root,
+            detail: response.overview.current?.context.workspace.root,
           });
         })
         .catch((error) => {
@@ -296,27 +316,38 @@ export function App() {
 
   const runRemoveProject = useCallback(
     (projectId: string) => {
-      void removeProject({ projectId })
-        .then((response) => {
-          setRegisteredProjects((previous) =>
-            previous.filter((project) => project.id !== response.project.id),
-          );
-          applyCurrentWorkspace(response.current);
-          addToast({
-            severity: "success",
-            title: "Project disconnected",
-            detail: `${response.project.name} disconnected; ${response.removedWorkspaceCount} workspace${response.removedWorkspaceCount === 1 ? "" : "s"} closed.`,
+      const finishRemoval = (confirmDirty: boolean) => {
+        void removeProject({ projectId, confirmDirty })
+          .then((response) => {
+            if (response.dirtyConfirmation) {
+              if (confirmDirtyDeletion(response.dirtyConfirmation)) {
+                finishRemoval(true);
+              }
+              return;
+            }
+            setRegisteredProjects((previous) =>
+              previous.filter((project) => project.id !== response.project.id),
+            );
+            applyCurrentWorkspace(response.overview.current);
+            addWarningToasts(response.warnings);
+            addToast({
+              severity: "success",
+              title: "Project disconnected",
+              detail: `${response.project.name} disconnected; ${response.removedWorkspaceCount} workspace${response.removedWorkspaceCount === 1 ? "" : "s"} closed.`,
+            });
+          })
+          .catch((error) => {
+            addToast({
+              severity: "error",
+              title: "Could not disconnect project",
+              detail: String(error),
+            });
           });
-        })
-        .catch((error) => {
-          addToast({
-            severity: "error",
-            title: "Could not disconnect project",
-            detail: String(error),
-          });
-        });
+      };
+
+      finishRemoval(false);
     },
-    [addToast, applyCurrentWorkspace],
+    [addToast, addWarningToasts, applyCurrentWorkspace, confirmDirtyDeletion],
   );
 
   const resetClientState = useCallback(() => {
@@ -324,6 +355,7 @@ export function App() {
     setSettings(createDefaultAppSettings(import.meta.env.DEV));
     setContext(null);
     setCurrentWorkspaceId(null);
+    setCurrentWorkspaceDiscardable(false);
     setContextLoaded(true);
     setLayout(createInitialLayout());
     setRegisteredProjects([]);
@@ -334,23 +366,76 @@ export function App() {
   }, []);
 
   const runResetApplication = useCallback(() => {
-    void resetApplication()
-      .then(() => {
-        resetClientState();
-        addToast({
-          severity: "success",
-          title: "You're back at the start",
-          detail: `Choose a project to set up ${APP_NAME} again.`,
+    const finishReset = (confirmDirty: boolean) => {
+      void resetApplication({ confirmDirty })
+        .then((response) => {
+          if (response.dirtyConfirmation) {
+            if (confirmDirtyDeletion(response.dirtyConfirmation)) {
+              finishReset(true);
+            }
+            return;
+          }
+          addWarningToasts(response.warnings);
+          resetClientState();
+          addToast({
+            severity: "success",
+            title: "You're back at the start",
+            detail: `Choose a project to set up ${APP_NAME} again.`,
+          });
+        })
+        .catch((error) => {
+          addToast({
+            severity: "error",
+            title: `Could not finish resetting ${APP_NAME}`,
+            detail: String(error),
+          });
         });
-      })
-      .catch((error) => {
-        addToast({
-          severity: "error",
-          title: `Could not finish resetting ${APP_NAME}`,
-          detail: String(error),
+    };
+
+    finishReset(false);
+  }, [addToast, addWarningToasts, confirmDirtyDeletion, resetClientState]);
+
+  const runDiscardCurrentWorkspace = useCallback(() => {
+    if (!currentWorkspaceId || !currentWorkspaceDiscardable) return;
+
+    const finishDiscard = (confirmDirty: boolean) => {
+      void discardWorkspace({ workspaceId: currentWorkspaceId, confirmDirty })
+        .then((response) => {
+          if (response.dirtyConfirmation) {
+            if (confirmDirtyDeletion(response.dirtyConfirmation)) {
+              finishDiscard(true);
+            }
+            return;
+          }
+
+          applyCurrentWorkspace(response.overview.current);
+          addWarningToasts(response.warnings);
+          addToast({
+            severity: "success",
+            title: "Workspace discarded",
+            detail: response.overview.current
+              ? `Now showing ${response.overview.current.context.workspace.name}.`
+              : "No workspaces are open.",
+          });
+        })
+        .catch((error) => {
+          addToast({
+            severity: "error",
+            title: "Could not discard workspace",
+            detail: String(error),
+          });
         });
-      });
-  }, [addToast, resetClientState]);
+    };
+
+    finishDiscard(false);
+  }, [
+    addToast,
+    addWarningToasts,
+    applyCurrentWorkspace,
+    confirmDirtyDeletion,
+    currentWorkspaceDiscardable,
+    currentWorkspaceId,
+  ]);
 
   const commandApi = useMemo<AppCommandApi>(
     () => ({
@@ -371,8 +456,9 @@ export function App() {
       openWorkspacePicker: () => setWorkspacePickerOpen(true),
       openSettings: () => setSettingsOpen(true),
       addProject: runAddProject,
+      discardWorkspace: runDiscardCurrentWorkspace,
     }),
-    [runAddProject],
+    [runAddProject, runDiscardCurrentWorkspace],
   );
 
   useEffect(() => {
@@ -396,8 +482,14 @@ export function App() {
       })
       .catch(() => {});
 
+    void listen("app://discard-workspace", runDiscardCurrentWorkspace)
+      .then((unlistenDiscardWorkspaceEvent) => {
+        unlistenFns.push(unlistenDiscardWorkspaceEvent);
+      })
+      .catch(() => {});
+
     return () => unlistenFns.forEach((unlisten) => unlisten());
-  }, [runAddProject]);
+  }, [runAddProject, runDiscardCurrentWorkspace]);
 
   useEffect(() => {
     if (!contextLoaded || !currentWorkspaceId) return;
@@ -650,6 +742,7 @@ export function App() {
                   <div className="tile-body">
                     {workspaceRoot ? (
                       <TerminalTile
+                        workspaceId={currentWorkspaceId ?? ""}
                         tileId={tile.id}
                         cwd={workspaceRoot}
                         active={focused}

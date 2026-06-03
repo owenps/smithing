@@ -1,9 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ApplicationResetRequest, ApplicationResetResponse } from "./types";
 
-export function resetApplication(): Promise<void> {
-  if (!isRunningInTauri()) return Promise.resolve();
+export function resetApplication(
+  request: ApplicationResetRequest,
+): Promise<ApplicationResetResponse> {
+  if (!isRunningInTauri()) {
+    return Promise.resolve({
+      overview: { current: null, currentWorkspaceId: null, openWorkspaces: [] },
+      dirtyConfirmation: null,
+      warnings: [],
+    });
+  }
 
-  return invoke<void>("application_reset");
+  return invoke<ApplicationResetResponse>("application_reset", { request });
 }
 
 function isRunningInTauri(): boolean {

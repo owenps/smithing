@@ -7,6 +7,7 @@ import {
 import type { TerminalLaunch, TileResumeMetadata } from "./types";
 
 interface TerminalTileProps {
+  workspaceId: string;
   tileId: string;
   cwd: string;
   active: boolean;
@@ -16,6 +17,7 @@ interface TerminalTileProps {
 }
 
 export function TerminalTile({
+  workspaceId,
   tileId,
   cwd,
   active,
@@ -32,6 +34,7 @@ export function TerminalTile({
 
     const runtime = createTerminalSessionRuntime({
       host,
+      workspaceId,
       tileId,
       cwd,
       launch,
@@ -49,6 +52,7 @@ export function TerminalTile({
     };
   }, [
     cwd,
+    workspaceId,
     launch.kind,
     launch.kind === "tool" ? launch.integrationId : undefined,
     launch.kind === "tool" ? launch.integrationTileId : undefined,

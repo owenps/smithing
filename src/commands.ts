@@ -25,6 +25,7 @@ export interface AppCommandApi {
   openWorkspacePicker: () => void;
   openSettings: () => void;
   addProject: () => void;
+  discardWorkspace: () => void;
 }
 
 export interface Command {
@@ -126,6 +127,13 @@ function behaviorForCommand(commandId: string): Pick<Command, "canRun" | "run"> 
     return {
       canRun: () => true,
       run: (api) => api.openWorkspacePicker(),
+    };
+  }
+
+  if (commandId === "workspace.discard") {
+    return {
+      canRun: () => true,
+      run: (api) => api.discardWorkspace(),
     };
   }
 
