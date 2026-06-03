@@ -284,6 +284,16 @@ struct OpenWorkspaceSummary {
     project_kind: ProjectKind,
     git_branch: Option<String>,
     discardable: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lines_added: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    lines_deleted: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WorkspaceLineDelta {
+    lines_added: u64,
+    lines_deleted: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1332,6 +1342,17 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
             continue;
         }
 
+        if tile.kind == "workspace" {
+            tile.integration_id = None;
+            tile.integration_tile_id = None;
+            tile.resume = None;
+            if tile.title.trim().is_empty() {
+                tile.title = "Workspaces".to_string();
+            }
+            tiles.push(tile);
+            continue;
+        }
+
         if tile.kind == "tool" {
             let Some(tool_tile) = tool_integration_tile_for_tile(&tile).or_else(|| {
                 legacy_tool_integration_tile(
@@ -1734,6 +1755,39 @@ fn git_status_path(line: &str) -> Option<String> {
     }
 }
 
+fn workspace_line_delta(root: &str) -> Option<WorkspaceLineDelta> {
+    if !Path::new(root).is_dir() {
+        return None;
+    }
+
+    let output = run_git_command(root, &["diff", "--numstat", "HEAD", "--"]).ok()?;
+    let mut delta = WorkspaceLineDelta {
+        lines_added: 0,
+        lines_deleted: 0,
+    };
+
+    for line in output.lines() {
+        let mut fields = line.split_whitespace();
+        let Some(added) = fields.next().and_then(parse_git_numstat_count) else {
+            continue;
+        };
+        let Some(deleted) = fields.next().and_then(parse_git_numstat_count) else {
+            continue;
+        };
+        delta.lines_added += added;
+        delta.lines_deleted += deleted;
+    }
+
+    Some(delta)
+}
+
+fn parse_git_numstat_count(value: &str) -> Option<u64> {
+    if value == "-" {
+        return None;
+    }
+    value.parse().ok()
+}
+
 fn remove_workspace_roots(
     app_data_dir: &Path,
     targets: &[WorkspaceCleanupTarget],
@@ -1874,6 +1928,11 @@ fn workspace_summaries_for_state(app_state: &PersistedAppState) -> Vec<OpenWorks
             } else {
                 workspace.name.clone()
             };
+            let line_delta = if workspace_discardable_for_summary(project) {
+                workspace_line_delta(&workspace.root)
+            } else {
+                None
+            };
 
             Some(OpenWorkspaceSummary {
                 id: workspace.id.clone(),
@@ -1884,6 +1943,8 @@ fn workspace_summaries_for_state(app_state: &PersistedAppState) -> Vec<OpenWorks
                 project_kind: project.kind,
                 git_branch,
                 discardable: workspace_discardable_for_summary(project),
+                lines_added: line_delta.map(|delta| delta.lines_added),
+                lines_deleted: line_delta.map(|delta| delta.lines_deleted),
             })
         })
         .collect()
@@ -2377,6 +2438,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_git_numstat_count_ignores_binary_counts() {
+        assert_eq!(parse_git_numstat_count("12"), Some(12));
+        assert_eq!(parse_git_numstat_count("-"), None);
+    }
+
+    #[test]
     fn sanitize_tile_state_migrates_known_initial_commands_to_tool_tiles() {
         let tile_state = WorkspaceTileState {
             tiles: vec![tile_with_initial_command("claude")],
@@ -2426,6 +2493,26 @@ mod tests {
         );
         assert_eq!(sanitized.tiles[0].title, "Codex");
         assert!(sanitized.tiles[0].tool_id.is_none());
+    }
+
+    #[test]
+    fn sanitize_tile_state_accepts_workspace_tiles() {
+        let mut tile = tile_with_initial_command("claude");
+        tile.kind = "workspace".to_string();
+        tile.title = "".to_string();
+        tile.integration_id = Some("claude".to_string());
+        tile.integration_tile_id = Some("cli".to_string());
+        tile.resume = Some(resume("claude", "session-1"));
+        let tile_state = WorkspaceTileState { tiles: vec![tile] };
+
+        let sanitized = sanitize_tile_state(tile_state);
+
+        assert_eq!(sanitized.tiles.len(), 1);
+        assert_eq!(sanitized.tiles[0].kind, "workspace");
+        assert_eq!(sanitized.tiles[0].title, "Workspaces");
+        assert!(sanitized.tiles[0].integration_id.is_none());
+        assert!(sanitized.tiles[0].integration_tile_id.is_none());
+        assert!(sanitized.tiles[0].resume.is_none());
     }
 
     fn resume(provider: &str, identifier: &str) -> TileResumeMetadata {

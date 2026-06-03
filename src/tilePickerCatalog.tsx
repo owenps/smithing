@@ -34,6 +34,12 @@ export type TilePickerCatalogItem =
     }
   | {
       id: string;
+      kind: "workspace";
+      title: string;
+      icon: ReactNode;
+    }
+  | {
+      id: string;
       kind: "tool";
       title: string;
       icon: ReactNode;
@@ -69,6 +75,14 @@ const terminalTilePickerItem = {
   defaultVisible: true,
 } as const satisfies ConfigurableTilePickerCatalogItem;
 
+const workspaceTilePickerItem = {
+  id: "workspace",
+  kind: "workspace",
+  title: "Workspaces",
+  icon: <span className="workspace-stack-picker-icon" />,
+  defaultVisible: true,
+} as const satisfies ConfigurableTilePickerCatalogItem;
+
 const integrationTilePickerItems: ConfigurableTilePickerCatalogItem[] =
   integrationCatalog.integrations.flatMap((integration) =>
     integration.tiles.map((tile) => ({
@@ -83,6 +97,7 @@ const integrationTilePickerItems: ConfigurableTilePickerCatalogItem[] =
   );
 
 export const configurableTilePickerItems: ConfigurableTilePickerCatalogItem[] = [
+  workspaceTilePickerItem,
   ...integrationTilePickerItems,
   terminalTilePickerItem,
 ];
@@ -106,6 +121,7 @@ export function findTilePickerItem(itemId: string): TilePickerCatalogItem | unde
 
 export function findTilePickerItemForTile(tile: Tile): TilePickerCatalogItem {
   if (tile.kind === "terminal") return terminalTilePickerItem;
+  if (tile.kind === "workspace") return workspaceTilePickerItem;
 
   return (
     configurableTilePickerItems.find(

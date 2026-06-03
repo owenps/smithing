@@ -5,7 +5,7 @@ export const MIN_TILE_HEIGHT = 2;
 
 export type Direction = "left" | "down" | "up" | "right";
 
-export type TileKind = "terminal" | "tool";
+export type TileKind = "terminal" | "tool" | "workspace";
 
 export interface TileResumeMetadata {
   provider: string;
@@ -33,7 +33,11 @@ export interface ToolWorkspaceTile extends BaseTile {
   integrationTileId: string;
 }
 
-export type Tile = TerminalWorkspaceTile | ToolWorkspaceTile;
+export interface WorkspaceStackTile extends BaseTile {
+  kind: "workspace";
+}
+
+export type Tile = TerminalWorkspaceTile | ToolWorkspaceTile | WorkspaceStackTile;
 
 export type ProjectKind = "git" | "plain";
 
@@ -67,6 +71,8 @@ export interface OpenWorkspaceSummary {
   projectKind: ProjectKind;
   gitBranch: string | null;
   discardable: boolean;
+  linesAdded?: number;
+  linesDeleted?: number;
 }
 
 export interface WorkspaceContext {

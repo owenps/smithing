@@ -22,18 +22,21 @@ import {
   closeTerminalSessionRuntimesForWorkspace,
 } from "./terminalSessionRuntime";
 import { ToastStack, type AppToast, type ToastSeverity } from "./ToastStack";
+import { WorkspaceTile } from "./WorkspaceTile";
 import { createDefaultTiles, splitFocusedTile, type TileSplitDirection } from "./tileLayout";
 import {
   findTilePickerItem,
   findTilePickerItemForTile,
   getTilePickerItems,
   type ConfigurableTilePickerItemId,
+  type TilePickerCatalogItem,
 } from "./tilePickerCatalog";
 import {
   GRID_COLUMNS,
   GRID_ROWS,
   type CurrentWorkspaceResponse,
   type DirtyConfirmation,
+  type OpenWorkspaceSummary,
   type RegisteredProject,
   type TerminalLaunch,
   type Tile,
@@ -47,6 +50,7 @@ import {
   discardWorkspace,
   getWorkspaceOverview,
   saveWorkspaceTileState,
+  switchWorkspace,
 } from "./workspaceClient";
 
 interface LayoutState {
@@ -84,6 +88,28 @@ function terminalLaunchForTile(tile: Tile): TerminalLaunch {
   return { kind: "shell" };
 }
 
+function tileOptionsForCatalogItem(
+  catalogItem: TilePickerCatalogItem,
+):
+  | { kind: "terminal"; title: string }
+  | { kind: "workspace"; title: string }
+  | { kind: "tool"; title: string; integrationId: string; integrationTileId: string } {
+  if (catalogItem.kind === "tool") {
+    return {
+      kind: "tool",
+      title: catalogItem.title,
+      integrationId: catalogItem.integrationId,
+      integrationTileId: catalogItem.integrationTileId,
+    };
+  }
+
+  if (catalogItem.kind === "workspace") {
+    return { kind: "workspace", title: catalogItem.title };
+  }
+
+  return { kind: "terminal", title: catalogItem.title };
+}
+
 export function App() {
   const commands = useMemo(() => createCommands(), []);
   const commandById = useMemo(
@@ -98,6 +124,7 @@ export function App() {
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [openWorkspaces, setOpenWorkspaces] = useState<OpenWorkspaceSummary[]>([]);
   const [layoutMutationPreview, setLayoutMutationPreview] = useState(false);
   const [registeredProjects, setRegisteredProjects] = useState<RegisteredProject[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
@@ -105,7 +132,13 @@ export function App() {
   const [toolAvailabilities, setToolAvailabilities] = useState<ToolAvailability[]>([]);
   const [toolAvailabilityLoaded, setToolAvailabilityLoaded] = useState(false);
   const [settings, setSettings] = useState(() => readAppSettings(import.meta.env.DEV));
-  const { debugLayout, terminalFontSize, tileHeadersVisible, tilePickerVisibility } = settings;
+  const {
+    debugLayout,
+    terminalFontSize,
+    tileHeadersVisible,
+    deletionPositiveStatColors,
+    tilePickerVisibility,
+  } = settings;
   const layoutRef = useRef(layout);
   const previousTileRuntimeOwnersRef = useRef<{ workspaceId: string | null; tileIds: Set<string> }>(
     { workspaceId: null, tileIds: new Set() },
@@ -176,6 +209,7 @@ export function App() {
         setContext(current?.context ?? null);
         setCurrentWorkspaceId(current?.workspaceId ?? null);
         setCurrentWorkspaceDiscardable(current?.context.workspace.discardable ?? false);
+        setOpenWorkspaces(overview.openWorkspaces);
         if (current) {
           setLayout(createLayoutFromTileState(current.tileState));
         }
@@ -188,6 +222,7 @@ export function App() {
         });
         setCurrentWorkspaceId(null);
         setCurrentWorkspaceDiscardable(false);
+        setOpenWorkspaces([]);
       })
       .finally(() => setContextLoaded(true));
   }, []);
@@ -233,6 +268,17 @@ export function App() {
     setContextLoaded(true);
     setLayout(current ? createLayoutFromTileState(current.tileState) : createInitialLayout());
   }, []);
+
+  const applyWorkspaceOverview = useCallback(
+    (overview: {
+      current: CurrentWorkspaceResponse | null;
+      openWorkspaces: OpenWorkspaceSummary[];
+    }) => {
+      setOpenWorkspaces(overview.openWorkspaces);
+      applyCurrentWorkspace(overview.current);
+    },
+    [applyCurrentWorkspace],
+  );
 
   const refreshProjects = useCallback(() => {
     setProjectsLoaded(false);
@@ -295,7 +341,7 @@ export function App() {
         refreshProjects();
         if (!response.overview.current) return;
 
-        applyCurrentWorkspace(response.overview.current);
+        applyWorkspaceOverview(response.overview);
         setTilePickerOpen(false);
         setWorkspacePickerOpen(false);
         setSettingsOpen(false);
@@ -313,13 +359,13 @@ export function App() {
           detail: String(error),
         });
       });
-  }, [addToast, addWarningToasts, applyCurrentWorkspace, refreshProjects]);
+  }, [addToast, addWarningToasts, applyWorkspaceOverview, refreshProjects]);
 
   const runCreateWorkspace = useCallback(
     (projectId: string) => {
       void createWorkspace({ projectId })
         .then((response) => {
-          applyCurrentWorkspace(response.overview.current);
+          applyWorkspaceOverview(response.overview);
           setWorkspacePickerOpen(false);
           setTilePickerOpen(false);
           setSettingsOpen(false);
@@ -333,7 +379,7 @@ export function App() {
           });
         });
     },
-    [addToast, addWarningToasts, applyCurrentWorkspace],
+    [addToast, addWarningToasts, applyWorkspaceOverview],
   );
 
   const runRemoveProject = useCallback(
@@ -353,7 +399,7 @@ export function App() {
             closeTerminalSessionRuntimesExceptWorkspaceIds(
               new Set(response.overview.openWorkspaces.map((workspace) => workspace.id)),
             );
-            applyCurrentWorkspace(response.overview.current);
+            applyWorkspaceOverview(response.overview);
             addWarningToasts(response.warnings);
             addToast({
               severity: "success",
@@ -372,7 +418,7 @@ export function App() {
 
       finishRemoval(false);
     },
-    [addToast, addWarningToasts, applyCurrentWorkspace, confirmDirtyDeletion],
+    [addToast, addWarningToasts, applyWorkspaceOverview, confirmDirtyDeletion],
   );
 
   const resetClientState = useCallback(() => {
@@ -384,6 +430,7 @@ export function App() {
     setContextLoaded(true);
     setLayout(createInitialLayout());
     setRegisteredProjects([]);
+    setOpenWorkspaces([]);
     setProjectsLoaded(true);
     setTilePickerOpen(false);
     setWorkspacePickerOpen(false);
@@ -421,48 +468,74 @@ export function App() {
     finishReset(false);
   }, [addToast, addWarningToasts, confirmDirtyDeletion, resetClientState]);
 
-  const runDiscardCurrentWorkspace = useCallback(() => {
-    if (!currentWorkspaceId || !currentWorkspaceDiscardable) return;
+  const runSwitchWorkspace = useCallback(
+    (workspaceId: string) => {
+      if (workspaceId === currentWorkspaceId) return;
 
-    const finishDiscard = (confirmDirty: boolean) => {
-      void discardWorkspace({ workspaceId: currentWorkspaceId, confirmDirty })
+      const saveCurrentLayout = currentWorkspaceId
+        ? saveWorkspaceTileState({
+            workspaceId: currentWorkspaceId,
+            tileState: { tiles: layoutRef.current.tiles },
+          }).catch(() => {})
+        : Promise.resolve();
+
+      void saveCurrentLayout
+        .then(() => switchWorkspace({ workspaceId }))
         .then((response) => {
-          if (response.dirtyConfirmation) {
-            if (confirmDirtyDeletion(response.dirtyConfirmation)) {
-              finishDiscard(true);
-            }
-            return;
-          }
-
-          closeTerminalSessionRuntimesForWorkspace(currentWorkspaceId);
-          applyCurrentWorkspace(response.overview.current);
-          addWarningToasts(response.warnings);
-          addToast({
-            severity: "success",
-            title: "Workspace discarded",
-            detail: response.overview.current
-              ? `Now showing ${response.overview.current.context.workspace.name}.`
-              : "No workspaces are open.",
-          });
+          applyWorkspaceOverview(response.overview);
         })
         .catch((error) => {
           addToast({
             severity: "error",
-            title: "Could not discard workspace",
+            title: "Could not switch workspace",
             detail: String(error),
           });
         });
-    };
+    },
+    [addToast, applyWorkspaceOverview, currentWorkspaceId],
+  );
 
-    finishDiscard(false);
-  }, [
-    addToast,
-    addWarningToasts,
-    applyCurrentWorkspace,
-    confirmDirtyDeletion,
-    currentWorkspaceDiscardable,
-    currentWorkspaceId,
-  ]);
+  const runDiscardWorkspace = useCallback(
+    (workspaceId: string) => {
+      const finishDiscard = (confirmDirty: boolean) => {
+        void discardWorkspace({ workspaceId, confirmDirty })
+          .then((response) => {
+            if (response.dirtyConfirmation) {
+              if (confirmDirtyDeletion(response.dirtyConfirmation)) {
+                finishDiscard(true);
+              }
+              return;
+            }
+
+            closeTerminalSessionRuntimesForWorkspace(workspaceId);
+            applyWorkspaceOverview(response.overview);
+            addWarningToasts(response.warnings);
+            addToast({
+              severity: "success",
+              title: "Workspace discarded",
+              detail: response.overview.current
+                ? `Now showing ${response.overview.current.context.workspace.name}.`
+                : "No workspaces are open.",
+            });
+          })
+          .catch((error) => {
+            addToast({
+              severity: "error",
+              title: "Could not discard workspace",
+              detail: String(error),
+            });
+          });
+      };
+
+      finishDiscard(false);
+    },
+    [addToast, addWarningToasts, applyWorkspaceOverview, confirmDirtyDeletion],
+  );
+
+  const runDiscardCurrentWorkspace = useCallback(() => {
+    if (!currentWorkspaceId || !currentWorkspaceDiscardable) return;
+    runDiscardWorkspace(currentWorkspaceId);
+  }, [currentWorkspaceDiscardable, currentWorkspaceId, runDiscardWorkspace]);
 
   const commandApi = useMemo<AppCommandApi>(
     () => ({
@@ -581,6 +654,10 @@ export function App() {
     setSettings((previous) => ({ ...previous, tileHeadersVisible }));
   };
 
+  const setDeletionPositiveStatColorsSetting = (deletionPositiveStatColors: boolean) => {
+    setSettings((previous) => ({ ...previous, deletionPositiveStatColors }));
+  };
+
   const setTilePickerItemVisibility = (itemId: ConfigurableTilePickerItemId, visible: boolean) => {
     setSettings((previous) => ({
       ...previous,
@@ -594,6 +671,7 @@ export function App() {
   const createTile = (
     tileOptions:
       | { kind: "terminal"; title: string }
+      | { kind: "workspace"; title: string }
       | { kind: "tool"; title: string; integrationId: string; integrationTileId: string },
     splitDirection?: TileSplitDirection,
   ) => {
@@ -767,7 +845,17 @@ export function App() {
                     ) : null}
                   </div>
                   <div className="tile-body">
-                    {workspaceRoot ? (
+                    {tile.kind === "workspace" ? (
+                      <WorkspaceTile
+                        workspaces={openWorkspaces}
+                        currentWorkspaceId={currentWorkspaceId}
+                        active={focused}
+                        showPaths={debugLayout}
+                        deletionPositiveStatColors={deletionPositiveStatColors}
+                        onSwitchWorkspace={runSwitchWorkspace}
+                        onDiscardWorkspace={runDiscardWorkspace}
+                      />
+                    ) : workspaceRoot ? (
                       <TerminalTile
                         workspaceId={currentWorkspaceId ?? ""}
                         tileId={tile.id}
@@ -806,6 +894,8 @@ export function App() {
           onTerminalFontSizeChange={setTerminalFontSizeSetting}
           tileHeadersVisible={tileHeadersVisible}
           onTileHeadersVisibleChange={setTileHeadersVisibleSetting}
+          deletionPositiveStatColors={deletionPositiveStatColors}
+          onDeletionPositiveStatColorsChange={setDeletionPositiveStatColorsSetting}
           tilePickerVisibility={tilePickerVisibility}
           toolAvailabilityByPickerItemId={toolAvailabilityByPickerItemId}
           toolAvailabilityLoaded={toolAvailabilityLoaded}
@@ -845,17 +935,7 @@ export function App() {
           onSelect={(item: PickerItem, options) => {
             const catalogItem = findTilePickerItem(item.id);
             if (!catalogItem) return;
-            createTile(
-              catalogItem.kind === "tool"
-                ? {
-                    kind: "tool",
-                    title: catalogItem.title,
-                    integrationId: catalogItem.integrationId,
-                    integrationTileId: catalogItem.integrationTileId,
-                  }
-                : { kind: "terminal", title: catalogItem.title },
-              options.splitDirection,
-            );
+            createTile(tileOptionsForCatalogItem(catalogItem), options.splitDirection);
           }}
         />
       ) : null}

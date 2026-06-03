@@ -13,6 +13,7 @@ const terminalFontSizeStep = 1;
 type SettingsItemId =
   | "terminal-font-size"
   | "tile-headers"
+  | "workspace-stat-colors"
   | "tile-picker"
   | "projects"
   | "keyboard-shortcuts"
@@ -21,6 +22,7 @@ type SettingsItemId =
 const settingsItems: SettingsItemId[] = [
   "terminal-font-size",
   "tile-headers",
+  "workspace-stat-colors",
   "tile-picker",
   "projects",
   "keyboard-shortcuts",
@@ -35,6 +37,8 @@ interface SettingsModalProps {
   onTerminalFontSizeChange: (fontSize: number) => void;
   tileHeadersVisible: boolean;
   onTileHeadersVisibleChange: (visible: boolean) => void;
+  deletionPositiveStatColors: boolean;
+  onDeletionPositiveStatColorsChange: (enabled: boolean) => void;
   tilePickerVisibility: TilePickerVisibility;
   toolAvailabilityByPickerItemId: Map<string, ToolAvailability>;
   toolAvailabilityLoaded: boolean;
@@ -56,6 +60,8 @@ export function SettingsModal({
   onTerminalFontSizeChange,
   tileHeadersVisible,
   onTileHeadersVisibleChange,
+  deletionPositiveStatColors,
+  onDeletionPositiveStatColorsChange,
   tilePickerVisibility,
   toolAvailabilityByPickerItemId,
   toolAvailabilityLoaded,
@@ -178,6 +184,11 @@ export function SettingsModal({
 
     if (activeItemId === "tile-headers") {
       onTileHeadersVisibleChange(!tileHeadersVisible);
+      return;
+    }
+
+    if (activeItemId === "workspace-stat-colors") {
+      onDeletionPositiveStatColorsChange(!deletionPositiveStatColors);
       return;
     }
 
@@ -327,6 +338,27 @@ export function SettingsModal({
             </span>
             <span className="settings-row-control">
               <Toggle checked={tileHeadersVisible} onCheckedChange={onTileHeadersVisibleChange} />
+            </span>
+          </label>
+          <label
+            className={[
+              "settings-row",
+              activeItemId === "workspace-stat-colors" ? "settings-row-active" : "",
+            ].join(" ")}
+            onMouseEnter={() => setActiveItemId("workspace-stat-colors")}
+            onFocus={() => setActiveItemId("workspace-stat-colors")}
+          >
+            <span className="settings-row-copy">
+              <span className="settings-row-title">Deletion-positive stats</span>
+              <span className="settings-row-description">
+                Treat deleted lines as positive in workspace git stats.
+              </span>
+            </span>
+            <span className="settings-row-control">
+              <Toggle
+                checked={deletionPositiveStatColors}
+                onCheckedChange={onDeletionPositiveStatColorsChange}
+              />
             </span>
           </label>
           <TilePickerSettings

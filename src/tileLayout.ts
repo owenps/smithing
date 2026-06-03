@@ -390,6 +390,7 @@ export type TileSplitDirection = Extract<Direction, "right" | "down">;
 
 type NewTileOptions =
   | { kind: "terminal"; title: string }
+  | { kind: "workspace"; title: string }
   | { kind: "tool"; title: string; integrationId: string; integrationTileId: string };
 
 const defaultNewTileOptions = { kind: "terminal", title: "Terminal" } as const;
@@ -432,15 +433,7 @@ export function splitFocusedTileInDirection(
   const focused = findTile(tiles, focusedTileId);
   if (!focused) return { tiles, focusedTileId };
 
-  const newTileOptions: NewTileOptions =
-    focused.kind === "tool"
-      ? {
-          kind: "tool",
-          title: focused.title,
-          integrationId: focused.integrationId,
-          integrationTileId: focused.integrationTileId,
-        }
-      : { kind: "terminal", title: focused.title };
+  const newTileOptions: NewTileOptions = tileOptionsForClone(focused);
 
   if (direction === "right" && focused.w >= MIN_TILE_WIDTH * 2) {
     return splitTileRight(tiles, focused, newTileOptions);
@@ -472,7 +465,28 @@ function createTileFromOptions(
     };
   }
 
+  if (options.kind === "workspace") {
+    return { ...base, kind: "workspace" };
+  }
+
   return { ...base, kind: "terminal" };
+}
+
+function tileOptionsForClone(tile: Tile): NewTileOptions {
+  if (tile.kind === "tool") {
+    return {
+      kind: "tool",
+      title: tile.title,
+      integrationId: tile.integrationId,
+      integrationTileId: tile.integrationTileId,
+    };
+  }
+
+  if (tile.kind === "workspace") {
+    return { kind: "workspace", title: tile.title };
+  }
+
+  return { kind: "terminal", title: tile.title };
 }
 
 function splitTileRight(

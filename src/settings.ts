@@ -13,6 +13,7 @@ export interface AppSettings {
   debugLayout: boolean;
   terminalFontSize: number;
   tileHeadersVisible: boolean;
+  deletionPositiveStatColors: boolean;
   tilePickerVisibility: TilePickerVisibility;
 }
 
@@ -20,6 +21,7 @@ interface StoredSettings {
   debugLayout?: unknown;
   terminalFontSize?: unknown;
   tileHeadersVisible?: unknown;
+  deletionPositiveStatColors?: unknown;
   tilePickerVisibility?: unknown;
 }
 
@@ -28,6 +30,7 @@ export function createDefaultAppSettings(debugLayout: boolean): AppSettings {
     debugLayout,
     terminalFontSize: 13,
     tileHeadersVisible: true,
+    deletionPositiveStatColors: false,
     tilePickerVisibility: createDefaultTilePickerVisibility(),
   };
 }
@@ -54,6 +57,10 @@ export function readAppSettings(defaultDebugLayout: boolean): AppSettings {
         typeof stored.tileHeadersVisible === "boolean"
           ? stored.tileHeadersVisible
           : defaults.tileHeadersVisible,
+      deletionPositiveStatColors:
+        typeof stored.deletionPositiveStatColors === "boolean"
+          ? stored.deletionPositiveStatColors
+          : defaults.deletionPositiveStatColors,
       tilePickerVisibility: readTilePickerVisibility(
         stored.tilePickerVisibility,
         defaults.tilePickerVisibility,
