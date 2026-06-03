@@ -15,6 +15,12 @@ import {
   writeAppSettings,
 } from "./settings";
 import { TerminalTile } from "./TerminalTile";
+import {
+  closeAllTerminalSessionRuntimes,
+  closeTerminalSessionRuntime,
+  closeTerminalSessionRuntimesExceptWorkspaceIds,
+  closeTerminalSessionRuntimesForWorkspace,
+} from "./terminalSessionRuntime";
 import { ToastStack, type AppToast, type ToastSeverity } from "./ToastStack";
 import { createDefaultTiles, splitFocusedTile, type TileSplitDirection } from "./tileLayout";
 import {
@@ -101,10 +107,31 @@ export function App() {
   const [settings, setSettings] = useState(() => readAppSettings(import.meta.env.DEV));
   const { debugLayout, terminalFontSize, tileHeadersVisible, tilePickerVisibility } = settings;
   const layoutRef = useRef(layout);
+  const previousTileRuntimeOwnersRef = useRef<{ workspaceId: string | null; tileIds: Set<string> }>(
+    { workspaceId: null, tileIds: new Set() },
+  );
 
   useEffect(() => {
     layoutRef.current = layout;
   }, [layout]);
+
+  useEffect(() => {
+    const nextTileRuntimeOwners = {
+      workspaceId: currentWorkspaceId,
+      tileIds: new Set(layout.tiles.map((tile) => tile.id)),
+    };
+    const previousTileRuntimeOwners = previousTileRuntimeOwnersRef.current;
+
+    if (currentWorkspaceId && previousTileRuntimeOwners.workspaceId === currentWorkspaceId) {
+      previousTileRuntimeOwners.tileIds.forEach((tileId) => {
+        if (!nextTileRuntimeOwners.tileIds.has(tileId)) {
+          closeTerminalSessionRuntime(currentWorkspaceId, tileId);
+        }
+      });
+    }
+
+    previousTileRuntimeOwnersRef.current = nextTileRuntimeOwners;
+  }, [currentWorkspaceId, layout.tiles]);
 
   useEffect(() => {
     document.body.classList.toggle("debug-layout", debugLayout);
@@ -323,6 +350,9 @@ export function App() {
             setRegisteredProjects((previous) =>
               previous.filter((project) => project.id !== response.project.id),
             );
+            closeTerminalSessionRuntimesExceptWorkspaceIds(
+              new Set(response.overview.openWorkspaces.map((workspace) => workspace.id)),
+            );
             applyCurrentWorkspace(response.overview.current);
             addWarningToasts(response.warnings);
             addToast({
@@ -371,6 +401,7 @@ export function App() {
             return;
           }
           addWarningToasts(response.warnings);
+          closeAllTerminalSessionRuntimes();
           resetClientState();
           addToast({
             severity: "success",
@@ -403,6 +434,7 @@ export function App() {
             return;
           }
 
+          closeTerminalSessionRuntimesForWorkspace(currentWorkspaceId);
           applyCurrentWorkspace(response.overview.current);
           addWarningToasts(response.warnings);
           addToast({

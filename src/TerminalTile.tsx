@@ -45,7 +45,7 @@ export function TerminalTile({
     runtime.setActive(active);
 
     return () => {
-      runtime.dispose();
+      runtime.detach(host);
       if (runtimeRef.current === runtime) {
         runtimeRef.current = null;
       }

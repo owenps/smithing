@@ -25,20 +25,73 @@ export interface TerminalSessionRuntime {
   setActive(active: boolean): void;
   setTerminalFontSize(fontSize: number): void;
   setOnResumeAssigned(onResumeAssigned: (resume: TileResumeMetadata) => void): void;
-  dispose(): void;
+  detach(host: HTMLElement): void;
 }
+
+const terminalSessionRuntimes = new Map<string, BrowserTerminalSessionRuntime>();
 
 export function createTerminalSessionRuntime(
   options: TerminalSessionRuntimeOptions,
 ): TerminalSessionRuntime {
-  return new BrowserTerminalSessionRuntime(options);
+  const key = terminalSessionRuntimeKey(options.workspaceId, options.tileId);
+  const existingRuntime = terminalSessionRuntimes.get(key);
+  if (existingRuntime && !existingRuntime.isDisposed()) {
+    existingRuntime.attach(options.host);
+    existingRuntime.setTerminalFontSize(options.terminalFontSize);
+    existingRuntime.setOnResumeAssigned(options.onResumeAssigned);
+    return existingRuntime;
+  }
+
+  const runtime = new BrowserTerminalSessionRuntime(options);
+  terminalSessionRuntimes.set(key, runtime);
+  return runtime;
+}
+
+export function closeTerminalSessionRuntime(workspaceId: string, tileId: string) {
+  const key = terminalSessionRuntimeKey(workspaceId, tileId);
+  const runtime = terminalSessionRuntimes.get(key);
+  if (!runtime) return;
+
+  terminalSessionRuntimes.delete(key);
+  runtime.dispose();
+}
+
+export function closeTerminalSessionRuntimesForWorkspace(workspaceId: string) {
+  for (const [key, runtime] of terminalSessionRuntimes) {
+    if (runtime.workspaceId !== workspaceId) continue;
+
+    terminalSessionRuntimes.delete(key);
+    runtime.dispose();
+  }
+}
+
+export function closeTerminalSessionRuntimesExceptWorkspaceIds(workspaceIds: Set<string>) {
+  for (const [key, runtime] of terminalSessionRuntimes) {
+    if (workspaceIds.has(runtime.workspaceId)) continue;
+
+    terminalSessionRuntimes.delete(key);
+    runtime.dispose();
+  }
+}
+
+export function closeAllTerminalSessionRuntimes() {
+  for (const [key, runtime] of terminalSessionRuntimes) {
+    terminalSessionRuntimes.delete(key);
+    runtime.dispose();
+  }
+}
+
+function terminalSessionRuntimeKey(workspaceId: string, tileId: string): string {
+  return `${workspaceId}:${tileId}`;
 }
 
 class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
+  readonly workspaceId: string;
   private readonly terminal: Terminal;
   private readonly fitAddon: FitAddon;
-  private readonly resizeObserver: ResizeObserver;
   private readonly unlistenFns: (() => void)[] = [];
+  private host: HTMLElement | null = null;
+  private resizeObserver: ResizeObserver | null = null;
   private sessionId: string | null = null;
   private disposed = false;
   private resizeTimer: number | null = null;
@@ -46,12 +99,12 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
   private onResumeAssigned: (resume: TileResumeMetadata) => void;
 
   constructor(options: TerminalSessionRuntimeOptions) {
+    this.workspaceId = options.workspaceId;
     this.onResumeAssigned = options.onResumeAssigned;
     this.terminal = createXterm(options.terminalFontSize);
     this.fitAddon = new FitAddon();
     this.terminal.loadAddon(this.fitAddon);
-    this.terminal.open(options.host);
-    this.fitAddon.fit();
+    this.attach(options.host);
 
     this.terminal.onData((data) => {
       if (!this.sessionId) return;
@@ -84,11 +137,12 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
     })
       .then(({ sessionId, assignedResume }) => {
         if (this.disposed) {
-          void closeTerminalSession({ sessionId });
+          void closeTerminalSession({ sessionId }).catch(() => {});
           return;
         }
 
         this.sessionId = sessionId;
+        this.fitAndResize();
         if (assignedResume) {
           this.onResumeAssigned(assignedResume);
         }
@@ -98,13 +152,42 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
         this.terminal.writeln(`${APP_NAME} could not start the terminal session.`);
         this.terminal.writeln(String(error));
       });
+  }
 
+  isDisposed() {
+    return this.disposed;
+  }
+
+  attach(host: HTMLElement) {
+    if (this.disposed) return;
+
+    this.host = host;
+    if (this.terminal.element) {
+      host.appendChild(this.terminal.element);
+    } else {
+      this.terminal.open(host);
+    }
+
+    this.resizeObserver?.disconnect();
     this.resizeObserver = new ResizeObserver(() => this.scheduleFitAndResize());
-    this.resizeObserver.observe(options.host);
+    this.resizeObserver.observe(host);
+    this.fitAndResize();
+  }
+
+  detach(host: HTMLElement) {
+    if (this.host !== host) return;
+
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    if (this.resizeTimer !== null) {
+      window.clearTimeout(this.resizeTimer);
+      this.resizeTimer = null;
+    }
+    this.host = null;
   }
 
   setActive(active: boolean) {
-    if (active && !this.disposed) {
+    if (active && !this.disposed && this.host) {
       this.terminal.focus();
     }
   }
@@ -136,7 +219,8 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
     if (this.disposed) return;
     this.disposed = true;
 
-    this.resizeObserver.disconnect();
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     if (this.resizeTimer !== null) {
       window.clearTimeout(this.resizeTimer);
       this.resizeTimer = null;
@@ -152,7 +236,7 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
     const sessionId = this.sessionId;
     this.sessionId = null;
     if (sessionId) {
-      void closeTerminalSession({ sessionId });
+      void closeTerminalSession({ sessionId }).catch(() => {});
     }
 
     this.terminal.dispose();
@@ -178,6 +262,8 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
   }
 
   private fitAndResize() {
+    if (!this.host) return;
+
     this.fitAddon.fit();
     const nextDimensions = this.fitAddon.proposeDimensions();
     if (!this.sessionId || !nextDimensions) return;

@@ -63,13 +63,6 @@ impl WorkspaceState {
     fn save(&self, app_state: &PersistedAppState) -> Result<(), String> {
         save_app_state(&self.state_path, app_state)
     }
-
-    fn current_workspace(&self) -> Result<OpenWorkspace, String> {
-        let app_state = self.app_state.lock().map_err(lock_error)?;
-        current_open_workspace(&app_state)
-            .cloned()
-            .ok_or_else(|| "no workspace is open".to_string())
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2186,11 +2179,13 @@ fn normalize_cwd(
     workspace_id: &str,
     cwd: &str,
 ) -> Result<PathBuf, String> {
-    let workspace = workspace_state.current_workspace()?;
-    if workspace.id != workspace_id {
-        return Err("terminal workspace must be the current workspace".to_string());
-    }
-    let workspace_root = PathBuf::from(workspace.root)
+    let app_state = workspace_state.app_state.lock().map_err(lock_error)?;
+    let workspace = app_state
+        .open_workspaces
+        .iter()
+        .find(|workspace| workspace.id == workspace_id)
+        .ok_or_else(|| "terminal workspace is not open".to_string())?;
+    let workspace_root = PathBuf::from(&workspace.root)
         .canonicalize()
         .map_err(|error| error.to_string())?;
     let path = Path::new(cwd);
@@ -2204,7 +2199,7 @@ fn normalize_cwd(
         .map_err(|error| error.to_string())?;
 
     if !canonical_candidate.starts_with(&workspace_root) {
-        return Err("terminal cwd must be inside the current workspace".to_string());
+        return Err("terminal cwd must be inside its workspace".to_string());
     }
 
     Ok(canonical_candidate)

@@ -17,6 +17,7 @@ pub(crate) struct TerminalState {
 
 struct TerminalSession {
     workspace_id: String,
+    tile_id: String,
     cwd: PathBuf,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
@@ -72,6 +73,12 @@ impl TerminalState {
         app: AppHandle,
         request: TerminalSessionCreateRequest,
     ) -> Result<TerminalSessionCreateResponse, String> {
+        if let Some(session_id) =
+            self.session_id_for_tile(&request.workspace_id, &request.tile_id)?
+        {
+            return Ok(TerminalSessionCreateResponse { session_id });
+        }
+
         let session_id = format!("terminal-{}", Uuid::new_v4());
         let pty_system = native_pty_system();
         let pair = pty_system
@@ -91,7 +98,7 @@ impl TerminalState {
         );
         command.env("TERM", "xterm-256color");
         command.env("COLORTERM", "truecolor");
-        command.env("FLUIDITY_TILE_ID", request.tile_id);
+        command.env("FLUIDITY_TILE_ID", &request.tile_id);
 
         let child = pair
             .slave
@@ -113,6 +120,7 @@ impl TerminalState {
             session_id.clone(),
             TerminalSession {
                 workspace_id: request.workspace_id,
+                tile_id: request.tile_id,
                 cwd,
                 master: pair.master,
                 writer,
@@ -124,6 +132,20 @@ impl TerminalState {
         spawn_wait_thread(app, session_id.clone(), child);
 
         Ok(TerminalSessionCreateResponse { session_id })
+    }
+
+    fn session_id_for_tile(
+        &self,
+        workspace_id: &str,
+        tile_id: &str,
+    ) -> Result<Option<String>, String> {
+        Ok(self
+            .sessions
+            .lock()
+            .map_err(lock_error)?
+            .iter()
+            .find(|(_, session)| session.workspace_id == workspace_id && session.tile_id == tile_id)
+            .map(|(session_id, _)| session_id.clone()))
     }
 
     pub(crate) fn write(&self, request: TerminalSessionWriteRequest) -> Result<(), String> {
