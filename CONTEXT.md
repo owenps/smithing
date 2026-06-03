@@ -12,9 +12,17 @@ _Avoid_: IDE, editor, agent app, cloud IDE
 A root directory that Fluidity can register and manage as a unit.
 _Avoid_: Repository, folder, codebase
 
+**Git-backed Project**:
+A Project whose root is managed by git and whose Workspaces use Workspace Branches for isolated streams of work.
+_Avoid_: Repository, git repo
+
 **Workspace**:
 A project-scoped working environment with one canonical filesystem root, used to pursue one stream of work independently from other streams.
 _Avoid_: Window, session, branch
+
+**Git-backed Workspace**:
+A Workspace for a Git-backed Project whose canonical filesystem root is an isolated git worktree and whose changes belong to its Workspace Branch.
+_Avoid_: Checkout, clone, branch
 
 **Open Workspace**:
 A workspace currently present in Fluidity and eligible to have its Workspace Tile State restored after restart.
@@ -24,9 +32,29 @@ _Avoid_: Tab, window, session
 The open workspace currently being shown to the user.
 _Avoid_: Active tab, selected session, current window
 
+**Workspace Attention State**:
+The user-facing attention status of an Open Workspace, such as unread activity or needing input.
+_Avoid_: Workspace telemetry, notification state
+
+**Unread Workspace**:
+An Open Workspace with activity the user has not viewed since it happened.
+_Avoid_: Active workspace, unseen workspace
+
 **Workspace Branch**:
-A branch owned by one git-backed workspace and used as the change surface for that stream of work.
+The branch currently checked out in a Git-backed Workspace and used as the change surface for that stream of work, even if renamed after Workspace creation. Fluidity-generated Workspace Branch names are unique across Fluidity and are not reused after discard.
 _Avoid_: Feature branch, task branch
+
+**Workspace Branch Prefix**:
+Optional user- or project-chosen text prepended to generated Workspace Branch names; the default is no prefix.
+_Avoid_: Fluidity prefix, branch namespace
+
+**Workspace Branch Discard Policy**:
+A Project Setting that controls whether discarding a Git-backed Workspace also deletes its Workspace Branch; the default is to keep the branch.
+_Avoid_: Branch cleanup, auto-delete branch
+
+**Workspace Base Branch**:
+The branch or remote-tracking ref used as the starting point for a new Git-backed Workspace's Workspace Branch, normally the Project's default upstream branch.
+_Avoid_: Starting branch, parent branch, source branch
 
 **Home Workspace**:
 The default workspace for a project that is not backed by git, rooted at the project root.
