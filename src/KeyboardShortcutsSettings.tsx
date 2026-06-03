@@ -149,7 +149,10 @@ export function KeyboardShortcutsSettings({
                           {shortcut.keyChords.map((keys, index) => (
                             <span className="keyboard-shortcut-chord-group" key={keys.join("+")}>
                               {index > 0 ? (
-                                <span className="keyboard-shortcut-chord-delimiter" aria-hidden="true">
+                                <span
+                                  className="keyboard-shortcut-chord-delimiter"
+                                  aria-hidden="true"
+                                >
                                   /
                                 </span>
                               ) : null}

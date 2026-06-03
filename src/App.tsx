@@ -82,6 +82,7 @@ export function App() {
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [layoutMutationPreview, setLayoutMutationPreview] = useState(false);
   const [registeredProjects, setRegisteredProjects] = useState<RegisteredProject[]>([]);
   const [projectsLoaded, setProjectsLoaded] = useState(false);
   const [toasts, setToasts] = useState<AppToast[]>([]);
@@ -96,6 +97,34 @@ export function App() {
   useEffect(() => {
     document.body.classList.toggle("debug-layout", debugLayout);
   }, [debugLayout]);
+
+  useEffect(() => {
+    const setModifierPreview = (active: boolean) => {
+      setLayoutMutationPreview((previous) => (previous === active ? previous : active));
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      setModifierPreview(event.ctrlKey && event.altKey);
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      setModifierPreview(event.ctrlKey && event.altKey);
+    };
+
+    const onBlur = () => {
+      setModifierPreview(false);
+    };
+
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+    window.addEventListener("blur", onBlur);
+
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+      window.removeEventListener("keyup", onKeyUp, { capture: true });
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
 
   useEffect(() => {
     writeAppSettings(settings);
@@ -451,6 +480,7 @@ export function App() {
                     focused ? "tile-focused" : "",
                     focusMode ? "tile-focus-mode" : "",
                     hiddenByFocusMode ? "tile-hidden-by-focus-mode" : "",
+                    focused && layoutMutationPreview ? "tile-layout-mutation-preview" : "",
                     tileHeadersVisible ? "" : "tile-header-hidden",
                   ].join(" ")}
                   style={
