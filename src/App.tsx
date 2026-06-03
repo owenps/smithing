@@ -33,7 +33,7 @@ import {
   type WorkspaceContext,
   type WorkspaceTileState,
 } from "./types";
-import { getCurrentWorkspace, saveWorkspaceTileState } from "./workspaceClient";
+import { createWorkspace, getCurrentWorkspace, saveWorkspaceTileState } from "./workspaceClient";
 
 interface LayoutState {
   tiles: Tile[];
@@ -81,6 +81,7 @@ export function App() {
   const [context, setContext] = useState<WorkspaceContext | null>(null);
   const [currentWorkspaceId, setCurrentWorkspaceId] = useState<string | null>(null);
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
+  const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [layoutMutationPreview, setLayoutMutationPreview] = useState(false);
   const [registeredProjects, setRegisteredProjects] = useState<RegisteredProject[]>([]);
@@ -166,6 +167,15 @@ export function App() {
     [dismissToast],
   );
 
+  const addWarningToasts = useCallback(
+    (warnings: string[]) => {
+      warnings.forEach((warning) => {
+        addToast({ severity: "info", title: "Workspace warning", detail: warning });
+      });
+    },
+    [addToast],
+  );
+
   const applyCurrentWorkspace = useCallback((current: CurrentWorkspaceResponse | null) => {
     setContext(current?.context ?? null);
     setCurrentWorkspaceId(current?.workspaceId ?? null);
@@ -190,6 +200,10 @@ export function App() {
       });
   }, [addToast]);
 
+  useEffect(() => {
+    refreshProjects();
+  }, [refreshProjects]);
+
   const runAddProject = useCallback(() => {
     void addProject()
       .then((response) => {
@@ -198,7 +212,9 @@ export function App() {
 
         applyCurrentWorkspace(response.current);
         setTilePickerOpen(false);
+        setWorkspacePickerOpen(false);
         setSettingsOpen(false);
+        addWarningToasts(response.warnings);
         addToast({
           severity: response.duplicate ? "info" : "success",
           title: response.duplicate ? "Project already registered" : "Project added",
@@ -212,7 +228,33 @@ export function App() {
           detail: String(error),
         });
       });
-  }, [addToast, applyCurrentWorkspace, refreshProjects]);
+  }, [addToast, addWarningToasts, applyCurrentWorkspace, refreshProjects]);
+
+  const runCreateWorkspace = useCallback(
+    (projectId: string) => {
+      void createWorkspace({ projectId })
+        .then((response) => {
+          applyCurrentWorkspace(response.current);
+          setWorkspacePickerOpen(false);
+          setTilePickerOpen(false);
+          setSettingsOpen(false);
+          addWarningToasts(response.warnings);
+          addToast({
+            severity: "success",
+            title: "Workspace created",
+            detail: response.current.context.workspace.root,
+          });
+        })
+        .catch((error) => {
+          addToast({
+            severity: "error",
+            title: "Could not create workspace",
+            detail: String(error),
+          });
+        });
+    },
+    [addToast, addWarningToasts, applyCurrentWorkspace],
+  );
 
   const runRemoveProject = useCallback(
     (projectId: string) => {
@@ -249,6 +291,7 @@ export function App() {
     setRegisteredProjects([]);
     setProjectsLoaded(true);
     setTilePickerOpen(false);
+    setWorkspacePickerOpen(false);
     setSettingsOpen(false);
   }, []);
 
@@ -287,6 +330,7 @@ export function App() {
         }));
       },
       openTilePicker: () => setTilePickerOpen(true),
+      openWorkspacePicker: () => setWorkspacePickerOpen(true),
       openSettings: () => setSettingsOpen(true),
       addProject: runAddProject,
     }),
@@ -305,6 +349,12 @@ export function App() {
     void listen("app://add-project", runAddProject)
       .then((unlistenAddProjectEvent) => {
         unlistenFns.push(unlistenAddProjectEvent);
+      })
+      .catch(() => {});
+
+    void listen("app://new-workspace", () => setWorkspacePickerOpen(true))
+      .then((unlistenNewWorkspaceEvent) => {
+        unlistenFns.push(unlistenNewWorkspaceEvent);
       })
       .catch(() => {});
 
@@ -334,6 +384,7 @@ export function App() {
         !event.shiftKey &&
         layoutRef.current.focusModeTileId &&
         !tilePickerOpen &&
+        !workspacePickerOpen &&
         !settingsOpen
       ) {
         event.preventDefault();
@@ -355,7 +406,7 @@ export function App() {
 
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [commandApi, commandById, settingsOpen, tilePickerOpen]);
+  }, [commandApi, commandById, settingsOpen, tilePickerOpen, workspacePickerOpen]);
 
   const workspaceRoot = context?.workspace.root;
   const showGitBranch = Boolean(context?.gitBranch && context.gitBranch !== context.workspace.name);
@@ -429,6 +480,32 @@ export function App() {
     () => getTilePickerItems(tilePickerVisibility),
     [tilePickerVisibility],
   );
+  const workspacePickerItems = useMemo<PickerItem[]>(() => {
+    const projects = [...registeredProjects].sort((left, right) => {
+      if (left.root === context?.project.root) return -1;
+      if (right.root === context?.project.root) return 1;
+      return left.name.localeCompare(right.name);
+    });
+
+    return projects
+      .map((project) => {
+        const disabled = project.kind !== "git" || project.rootAvailable === false;
+        const title =
+          project.rootAvailable === false
+            ? `${project.name} (missing)`
+            : project.kind === "git"
+              ? project.name
+              : `${project.name} (plain project)`;
+
+        return {
+          id: project.id,
+          title,
+          icon: project.kind === "git" ? "⎇" : "⌂",
+          disabled,
+        };
+      })
+      .concat({ id: "project.add", title: "Add Project…", icon: "+", disabled: false });
+  }, [context?.project.root, registeredProjects]);
 
   return (
     <main className="app-shell">
@@ -560,6 +637,22 @@ export function App() {
           onRemoveProject={runRemoveProject}
           onResetApplication={runResetApplication}
           onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
+
+      {workspacePickerOpen ? (
+        <Picker
+          title="New Workspace"
+          items={workspacePickerItems}
+          footer={null}
+          onClose={() => setWorkspacePickerOpen(false)}
+          onSelect={(item: PickerItem) => {
+            if (item.id === "project.add") {
+              runAddProject();
+              return;
+            }
+            runCreateWorkspace(item.id);
+          }}
         />
       ) : null}
 

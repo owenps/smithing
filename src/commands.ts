@@ -22,6 +22,7 @@ export interface AppCommandApi {
   setFocusedTileId: (tileId: string | null) => void;
   setFocusModeTileId: (updater: (tileId: string | null) => string | null) => void;
   openTilePicker: () => void;
+  openWorkspacePicker: () => void;
   openSettings: () => void;
   addProject: () => void;
 }
@@ -118,6 +119,13 @@ function behaviorForCommand(commandId: string): Pick<Command, "canRun" | "run"> 
     return {
       canRun: () => true,
       run: (api) => api.addProject(),
+    };
+  }
+
+  if (commandId === "workspace.new") {
+    return {
+      canRun: () => true,
+      run: (api) => api.openWorkspacePicker(),
     };
   }
 

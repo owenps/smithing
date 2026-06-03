@@ -42,6 +42,7 @@ export interface RegisteredProject {
   name: string;
   root: string;
   kind: ProjectKind;
+  rootAvailable?: boolean;
 }
 
 export interface Project {
@@ -76,6 +77,16 @@ export interface ProjectAddResponse {
   current: CurrentWorkspaceResponse | null;
   project: RegisteredProject | null;
   duplicate: boolean;
+  warnings: string[];
+}
+
+export interface WorkspaceCreateRequest {
+  projectId: string;
+}
+
+export interface WorkspaceCreateResponse {
+  current: CurrentWorkspaceResponse;
+  warnings: string[];
 }
 
 export interface ProjectRemoveRequest {

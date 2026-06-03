@@ -15,6 +15,18 @@
     "title": "Add Project…"
   },
   {
+    "id": "workspace.new",
+    "title": "New Workspace…",
+    "shortcutGroup": "General",
+    "shortcut": {
+      "key": "n",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "N"]
+    },
+    "nativeAccelerator": "Cmd+Shift+N"
+  },
+  {
     "id": "tilePicker.open",
     "title": "Create New Tile",
     "shortcutGroup": "General",

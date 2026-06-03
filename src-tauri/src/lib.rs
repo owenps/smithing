@@ -24,10 +24,12 @@ const OPEN_SETTINGS_MENU_ID: &str = "settings.open";
 const OPEN_SETTINGS_EVENT: &str = "app://open-settings";
 const ADD_PROJECT_MENU_ID: &str = "project.add";
 const ADD_PROJECT_EVENT: &str = "app://add-project";
+const NEW_WORKSPACE_MENU_ID: &str = "workspace.new";
+const NEW_WORKSPACE_EVENT: &str = "app://new-workspace";
 const COMMANDS_MANIFEST_JSON: &str = include_str!("../../src/commandsManifest.json");
 const INTEGRATION_CATALOG_JSON: &str = include_str!("../../src/shared/integrationCatalog.json");
 const APP_STATE_FILE: &str = "app-state.json";
-const APP_STATE_VERSION: u32 = 3;
+const APP_STATE_VERSION: u32 = 1;
 const GRID_COLUMNS: i32 = 12;
 const GRID_ROWS: i32 = 8;
 const MIN_TILE_WIDTH: i32 = 3;
@@ -35,6 +37,7 @@ const MIN_TILE_HEIGHT: i32 = 2;
 
 struct WorkspaceState {
     state_path: PathBuf,
+    app_data_dir: PathBuf,
     app_state: Mutex<PersistedAppState>,
 }
 
@@ -50,6 +53,7 @@ impl WorkspaceState {
 
         Ok(Self {
             state_path,
+            app_data_dir,
             app_state: Mutex::new(app_state),
         })
     }
@@ -73,6 +77,8 @@ struct PersistedAppState {
     projects: Vec<RegisteredProject>,
     open_workspaces: Vec<OpenWorkspace>,
     current_workspace_id: Option<String>,
+    #[serde(default)]
+    generated_workspace_branch_names: Vec<String>,
 }
 
 impl Default for PersistedAppState {
@@ -82,6 +88,7 @@ impl Default for PersistedAppState {
             projects: Vec::new(),
             open_workspaces: Vec::new(),
             current_workspace_id: None,
+            generated_workspace_branch_names: Vec::new(),
         }
     }
 }
@@ -263,6 +270,20 @@ struct ProjectAddResponse {
     current: Option<CurrentWorkspaceResponse>,
     project: Option<RegisteredProject>,
     duplicate: bool,
+    warnings: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCreateRequest {
+    project_id: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct WorkspaceCreateResponse {
+    current: CurrentWorkspaceResponse,
+    warnings: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -288,6 +309,16 @@ struct RegisteredProject {
     kind: ProjectKind,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RegisteredProjectListItem {
+    id: String,
+    name: String,
+    root: String,
+    kind: ProjectKind,
+    root_available: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 enum ProjectKind {
@@ -304,9 +335,11 @@ fn workspace_current(
 }
 
 #[tauri::command]
-fn project_list(state: State<'_, WorkspaceState>) -> Result<Vec<RegisteredProject>, String> {
+fn project_list(
+    state: State<'_, WorkspaceState>,
+) -> Result<Vec<RegisteredProjectListItem>, String> {
     let app_state = state.app_state.lock().map_err(lock_error)?;
-    Ok(app_state.projects.clone())
+    Ok(app_state.projects.iter().map(project_list_item).collect())
 }
 
 #[tauri::command]
@@ -319,6 +352,7 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
             current: None,
             project: None,
             duplicate: false,
+            warnings: Vec::new(),
         });
     };
 
@@ -330,6 +364,7 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
     }
 
     let canonical_root = path_to_string(&canonical_root);
+    let app_data_dir = state.app_data_dir.clone();
     let mut app_state = state.app_state.lock().map_err(lock_error)?;
     let project_index = app_state
         .projects
@@ -347,7 +382,9 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
         (project, false)
     };
 
-    let workspace_id = select_or_create_initial_workspace(&mut app_state, &project);
+    let mut warnings = Vec::new();
+    let workspace_id =
+        select_or_create_initial_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
     app_state.current_workspace_id = Some(workspace_id);
     state.save(&app_state)?;
 
@@ -355,7 +392,41 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
         current: current_workspace_response(&app_state),
         project: Some(project),
         duplicate,
+        warnings,
     })
+}
+
+#[tauri::command]
+fn workspace_create(
+    state: State<'_, WorkspaceState>,
+    request: WorkspaceCreateRequest,
+) -> Result<WorkspaceCreateResponse, String> {
+    let app_data_dir = state.app_data_dir.clone();
+    let mut app_state = state.app_state.lock().map_err(lock_error)?;
+    let project = app_state
+        .projects
+        .iter()
+        .find(|project| project.id == request.project_id)
+        .cloned()
+        .ok_or_else(|| "project not found".to_string())?;
+
+    if project.kind != ProjectKind::Git {
+        return Err("new workspaces are only available for git-backed projects".to_string());
+    }
+    if !Path::new(&project.root).is_dir() {
+        return Err("project root is missing".to_string());
+    }
+
+    let mut warnings = Vec::new();
+    let workspace = create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
+    let workspace_id = workspace.id.clone();
+    app_state.open_workspaces.push(workspace);
+    app_state.current_workspace_id = Some(workspace_id);
+    state.save(&app_state)?;
+
+    let current = current_workspace_response(&app_state)
+        .ok_or_else(|| "created workspace is unavailable".to_string())?;
+    Ok(WorkspaceCreateResponse { current, warnings })
 }
 
 #[tauri::command]
@@ -489,6 +560,7 @@ pub fn run() {
             project_list,
             project_add,
             project_remove,
+            workspace_create,
             workspace_tile_state_save,
             application_reset,
             terminal_create,
@@ -508,6 +580,9 @@ pub fn run() {
                 }
                 if event.id() == ADD_PROJECT_MENU_ID {
                     let _ = app.emit(ADD_PROJECT_EVENT, ());
+                }
+                if event.id() == NEW_WORKSPACE_MENU_ID {
+                    let _ = app.emit(NEW_WORKSPACE_EVENT, ());
                 }
             });
 
@@ -541,6 +616,15 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
         Some(NativeIcon::Add),
         None::<&str>,
     )?;
+    let new_workspace_accelerator = native_accelerator_for_command(NEW_WORKSPACE_MENU_ID);
+    let new_workspace = IconMenuItem::with_id_and_native_icon(
+        app,
+        NEW_WORKSPACE_MENU_ID,
+        "New Workspace…",
+        true,
+        Some(NativeIcon::Add),
+        new_workspace_accelerator.as_deref(),
+    )?;
 
     Menu::with_items(
         app,
@@ -569,6 +653,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
                 "File",
                 true,
                 &[
+                    &new_workspace,
                     &add_project,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::close_window(app, None)?,
@@ -587,6 +672,7 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
                 "File",
                 true,
                 &[
+                    &new_workspace,
                     &add_project,
                     &PredefinedMenuItem::separator(app)?,
                     &settings,
@@ -646,7 +732,7 @@ fn load_app_state(state_path: &Path) -> PersistedAppState {
         return PersistedAppState::default();
     };
 
-    if !matches!(app_state.version, 1 | 2 | APP_STATE_VERSION) {
+    if app_state.version != APP_STATE_VERSION {
         backup_corrupt_app_state(state_path);
         return PersistedAppState::default();
     }
@@ -713,45 +799,125 @@ fn current_open_workspace(app_state: &PersistedAppState) -> Option<&OpenWorkspac
 }
 
 fn select_or_create_initial_workspace(
+    app_data_dir: &Path,
     app_state: &mut PersistedAppState,
     project: &RegisteredProject,
-) -> String {
+    warnings: &mut Vec<String>,
+) -> Result<String, String> {
     if let Some(workspace) = app_state
         .open_workspaces
         .iter_mut()
-        .filter(|workspace| {
-            workspace.project_id == project.id && workspace_root_available(workspace)
-        })
+        .filter(|workspace| workspace_selectable_for_project(project, workspace))
         .max_by_key(|workspace| workspace.last_used_at)
     {
         workspace.last_used_at = now_unix_seconds();
         workspace.git_branch =
             observed_git_branch(project.kind, &workspace.root).or(workspace.git_branch.clone());
-        return workspace.id.clone();
+        if project.kind == ProjectKind::Git {
+            if let Some(branch) = workspace.git_branch.clone() {
+                workspace.name = branch;
+            }
+        }
+        return Ok(workspace.id.clone());
     }
 
-    let workspace = open_workspace_for_project(project);
+    let workspace = match project.kind {
+        ProjectKind::Git => create_git_workspace(app_data_dir, app_state, project, warnings)?,
+        ProjectKind::Plain => home_workspace_for_project(project),
+    };
     let workspace_id = workspace.id.clone();
     app_state.open_workspaces.push(workspace);
-    workspace_id
+    Ok(workspace_id)
 }
 
-fn open_workspace_for_project(project: &RegisteredProject) -> OpenWorkspace {
-    let git_branch = observed_git_branch(project.kind, &project.root);
-    let name = match project.kind {
-        ProjectKind::Git => git_branch.clone().unwrap_or_else(|| "Git".to_string()),
-        ProjectKind::Plain => "Home".to_string(),
-    };
+fn workspace_selectable_for_project(
+    project: &RegisteredProject,
+    workspace: &OpenWorkspace,
+) -> bool {
+    if workspace.project_id != project.id || !workspace_root_available(workspace) {
+        return false;
+    }
 
+    project.kind == ProjectKind::Plain || workspace.root != project.root
+}
+
+fn home_workspace_for_project(project: &RegisteredProject) -> OpenWorkspace {
     OpenWorkspace {
         id: format!("workspace-{}", Uuid::new_v4()),
         project_id: project.id.clone(),
-        name,
+        name: "Home".to_string(),
         root: project.root.clone(),
-        git_branch,
+        git_branch: None,
         tile_state: default_workspace_tile_state(),
         last_used_at: now_unix_seconds(),
     }
+}
+
+fn create_git_workspace(
+    app_data_dir: &Path,
+    app_state: &mut PersistedAppState,
+    project: &RegisteredProject,
+    warnings: &mut Vec<String>,
+) -> Result<OpenWorkspace, String> {
+    if has_uncommitted_changes(&project.root)? {
+        warnings.push(
+            "Project root has uncommitted changes; the new workspace starts from the workspace base branch without those changes."
+                .to_string(),
+        );
+    }
+
+    if !git_command_succeeds(&project.root, &["fetch"])? {
+        warnings.push(
+            "Could not fetch before creating the workspace; using the locally-known base branch."
+                .to_string(),
+        );
+    }
+
+    let base_ref = workspace_base_ref(&project.root)?;
+    let branch = next_workspace_branch_name(app_state, &project.root)?;
+    let workspace_id = format!("workspace-{branch}");
+    let workspace_root = app_data_dir
+        .join("workspaces")
+        .join(format!(
+            "{}-{}",
+            sanitize_path_segment(&project.name),
+            sanitize_path_segment(&project.id)
+        ))
+        .join(&branch);
+
+    if let Some(parent) = workspace_root.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let workspace_root_string = path_to_string(&workspace_root);
+    run_git_command(
+        &project.root,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            &branch,
+            &workspace_root_string,
+            &base_ref,
+        ],
+    )?;
+
+    app_state
+        .generated_workspace_branch_names
+        .push(branch.clone());
+
+    let git_branch = observed_git_branch(ProjectKind::Git, &workspace_root_string)
+        .unwrap_or_else(|| branch.clone());
+
+    Ok(OpenWorkspace {
+        id: workspace_id,
+        project_id: project.id.clone(),
+        name: git_branch.clone(),
+        root: workspace_root_string,
+        git_branch: Some(git_branch),
+        tile_state: default_workspace_tile_state(),
+        last_used_at: now_unix_seconds(),
+    })
 }
 
 fn default_workspace_tile_state() -> WorkspaceTileState {
@@ -962,12 +1128,27 @@ fn registered_project_for_root(root: &Path) -> RegisteredProject {
     }
 }
 
+fn project_list_item(project: &RegisteredProject) -> RegisteredProjectListItem {
+    RegisteredProjectListItem {
+        id: project.id.clone(),
+        name: project.name.clone(),
+        root: project.root.clone(),
+        kind: project.kind,
+        root_available: Path::new(&project.root).is_dir(),
+    }
+}
+
 fn workspace_context_for_project_and_workspace(
     project: &RegisteredProject,
     workspace: &OpenWorkspace,
 ) -> WorkspaceContext {
     let git_branch =
         observed_git_branch(project.kind, &workspace.root).or(workspace.git_branch.clone());
+    let workspace_name = if project.kind == ProjectKind::Git {
+        git_branch.clone().unwrap_or_else(|| workspace.name.clone())
+    } else {
+        workspace.name.clone()
+    };
 
     WorkspaceContext {
         project: ProjectContext {
@@ -977,7 +1158,7 @@ fn workspace_context_for_project_and_workspace(
         },
         workspace: WorkspaceContextInfo {
             id: workspace.id.clone(),
-            name: workspace.name.clone(),
+            name: workspace_name,
             root: workspace.root.clone(),
         },
         git_branch,
@@ -1012,22 +1193,131 @@ fn git_branch_for_root(root: &str) -> Option<String> {
         .or_else(|| git_output(root, &["rev-parse", "--short", "HEAD"]))
 }
 
-fn git_output(root: &str, args: &[&str]) -> Option<String> {
-    let output = Command::new("git")
+const WORKSPACE_BRANCH_TREE_NAMES: &[&str] = &[
+    "willow", "cedar", "maple", "birch", "aspen", "spruce", "cypress", "elm", "fir", "hemlock",
+    "juniper", "laurel", "oak", "pine", "redwood", "sycamore",
+];
+
+fn workspace_base_ref(root: &str) -> Result<String, String> {
+    if let Some(origin_head) = git_output(
+        root,
+        &[
+            "symbolic-ref",
+            "--quiet",
+            "--short",
+            "refs/remotes/origin/HEAD",
+        ],
+    ) {
+        return Ok(origin_head);
+    }
+
+    if let Some(upstream) = git_output(
+        root,
+        &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+    ) {
+        return Ok(upstream);
+    }
+
+    Err("could not find a workspace base branch; set origin/HEAD or configure an upstream for the current branch".to_string())
+}
+
+fn has_uncommitted_changes(root: &str) -> Result<bool, String> {
+    let output = run_git_command(root, &["status", "--porcelain"])?;
+    Ok(!output.trim().is_empty())
+}
+
+fn next_workspace_branch_name(app_state: &PersistedAppState, root: &str) -> Result<String, String> {
+    let mut used: HashSet<String> = app_state
+        .generated_workspace_branch_names
+        .iter()
+        .cloned()
+        .collect();
+    used.extend(local_git_branch_names(root)?);
+
+    let offset = Uuid::new_v4().as_bytes()[0] as usize % WORKSPACE_BRANCH_TREE_NAMES.len();
+    for suffix in 1..10_000 {
+        for index in 0..WORKSPACE_BRANCH_TREE_NAMES.len() {
+            let tree_name =
+                WORKSPACE_BRANCH_TREE_NAMES[(offset + index) % WORKSPACE_BRANCH_TREE_NAMES.len()];
+            let candidate = if suffix == 1 {
+                tree_name.to_string()
+            } else {
+                format!("{tree_name}-{suffix}")
+            };
+            if !used.contains(&candidate) {
+                return Ok(candidate);
+            }
+        }
+    }
+
+    Err("could not generate a unique workspace branch name".to_string())
+}
+
+fn local_git_branch_names(root: &str) -> Result<HashSet<String>, String> {
+    let branches = run_git_command(root, &["branch", "--format", "%(refname:short)"])?;
+    Ok(branches
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn git_command_succeeds(root: &str, args: &[&str]) -> Result<bool, String> {
+    Ok(git_command(root, args)?.status.success())
+}
+
+fn run_git_command(root: &str, args: &[&str]) -> Result<String, String> {
+    let output = git_command(root, args)?;
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if output.status.success() {
+        return Ok(stdout);
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if stderr.is_empty() {
+        format!("git {} failed", args.join(" "))
+    } else {
+        stderr
+    })
+}
+
+fn git_command(root: &str, args: &[&str]) -> Result<std::process::Output, String> {
+    Command::new("git")
         .arg("-C")
         .arg(root)
         .args(args)
         .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
+        .map_err(|error| error.to_string())
+}
 
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if value.is_empty() {
+fn git_output(root: &str, args: &[&str]) -> Option<String> {
+    let output = run_git_command(root, args).ok()?;
+    if output.is_empty() {
         None
     } else {
-        Some(value)
+        Some(output)
+    }
+}
+
+fn sanitize_path_segment(value: &str) -> String {
+    let segment = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .trim_matches('-')
+        .to_string();
+
+    if segment.is_empty() {
+        "project".to_string()
+    } else {
+        segment
     }
 }
 

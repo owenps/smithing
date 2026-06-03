@@ -15,11 +15,12 @@ export interface PickerSelectOptions {
 interface PickerProps {
   title: string;
   items: PickerItem[];
+  footer?: ReactNode | null;
   onSelect: (item: PickerItem, options: PickerSelectOptions) => void;
   onClose: () => void;
 }
 
-export function Picker({ title, items, onSelect, onClose }: PickerProps) {
+export function Picker({ title, items, footer, onSelect, onClose }: PickerProps) {
   const [query, setQuery] = useState("");
   const visibleItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -120,17 +121,23 @@ export function Picker({ title, items, onSelect, onClose }: PickerProps) {
           })}
           {visibleItems.length === 0 ? <div className="picker-empty">No matches</div> : null}
         </div>
-        <div className="picker-footer" aria-label="Tile picker shortcuts">
-          <span className="picker-shortcut-hint">
-            Split right <KeyChord keys={["Enter"]} size="compact" />
-          </span>
-          <span className="picker-shortcut-separator" aria-hidden="true">
-            •
-          </span>
-          <span className="picker-shortcut-hint">
-            Split down <KeyChord keys={["⇧", "Enter"]} size="compact" />
-          </span>
-        </div>
+        {footer === null ? null : (
+          <div className="picker-footer" aria-label="Picker shortcuts">
+            {footer ?? (
+              <>
+                <span className="picker-shortcut-hint">
+                  Split right <KeyChord keys={["Enter"]} size="compact" />
+                </span>
+                <span className="picker-shortcut-separator" aria-hidden="true">
+                  •
+                </span>
+                <span className="picker-shortcut-hint">
+                  Split down <KeyChord keys={["⇧", "Enter"]} size="compact" />
+                </span>
+              </>
+            )}
+          </div>
+        )}
       </section>
     </div>
   );
