@@ -316,7 +316,7 @@ export function SettingsModal({
             <span className="settings-row-copy">
               <span className="settings-row-title">Tile headers</span>
               <span className="settings-row-description">
-                Show title and geometry metadata at the top of each tile.
+                Show tile titles at the top of each tile.
               </span>
             </span>
             <span className="settings-row-control">
@@ -486,10 +486,8 @@ export function SettingsModal({
             onFocus={() => setActiveItemId("debug-layout")}
           >
             <span className="settings-row-copy">
-              <span className="settings-row-title">Debug layout</span>
-              <span className="settings-row-description">
-                Show alignment guides while tuning the interface.
-              </span>
+              <span className="settings-row-title">Debug mode</span>
+              <span className="settings-row-description">Show development-only diagnostics.</span>
             </span>
             <span className="settings-row-control">
               <Toggle checked={debugLayout} onCheckedChange={onDebugLayoutChange} />

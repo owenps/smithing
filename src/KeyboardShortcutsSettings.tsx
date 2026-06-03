@@ -145,7 +145,11 @@ export function KeyboardShortcutsSettings({
                         onMouseEnter={() => setActiveShortcutId(shortcut.id)}
                       >
                         <span className="keyboard-shortcut-title">{shortcut.title}</span>
-                        <KeyChord keys={shortcut.keys} />
+                        <span className="keyboard-shortcut-chords">
+                          {shortcut.keyChords.map((keys) => (
+                            <KeyChord key={keys.join("+")} keys={keys} />
+                          ))}
+                        </span>
                       </div>
                     );
                   })}

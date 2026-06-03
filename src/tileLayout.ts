@@ -38,50 +38,91 @@ export function focusTileInDirection(
   const focused = findTile(tiles, focusedTileId);
   if (!focused) return focusedTileId;
 
-  const focusedCenterX = focused.x + focused.w / 2;
-  const focusedCenterY = focused.y + focused.h / 2;
+  const directCandidate = bestFocusCandidate(tiles, focused, direction, false);
+  if (directCandidate) return directCandidate.id;
 
+  return bestFocusCandidate(tiles, focused, direction, true)?.id ?? focusedTileId;
+}
+
+type TileFocusCandidate = {
+  tile: Tile;
+  primary: number;
+  overlapPenalty: number;
+  secondary: number;
+  tertiary: number;
+};
+
+function bestFocusCandidate(
+  tiles: Tile[],
+  focused: Tile,
+  direction: Direction,
+  wrap: boolean,
+): Tile | null {
   const candidates = tiles
     .filter((tile) => tile.id !== focused.id)
-    .map((tile) => {
-      const centerX = tile.x + tile.w / 2;
-      const centerY = tile.y + tile.h / 2;
+    .map((tile) => focusCandidate(tile, focused, direction, wrap))
+    .filter((candidate): candidate is TileFocusCandidate => candidate !== null)
+    .sort(
+      (a, b) =>
+        a.primary - b.primary ||
+        a.overlapPenalty - b.overlapPenalty ||
+        a.secondary - b.secondary ||
+        a.tertiary - b.tertiary,
+    );
 
-      switch (direction) {
-        case "left":
-          if (tile.x + tile.w > focused.x) return null;
-          return {
-            tile,
-            primary: focused.x - (tile.x + tile.w),
-            secondary: Math.abs(centerY - focusedCenterY),
-          };
-        case "right":
-          if (tile.x < focused.x + focused.w) return null;
-          return {
-            tile,
-            primary: tile.x - (focused.x + focused.w),
-            secondary: Math.abs(centerY - focusedCenterY),
-          };
-        case "up":
-          if (tile.y + tile.h > focused.y) return null;
-          return {
-            tile,
-            primary: focused.y - (tile.y + tile.h),
-            secondary: Math.abs(centerX - focusedCenterX),
-          };
-        case "down":
-          if (tile.y < focused.y + focused.h) return null;
-          return {
-            tile,
-            primary: tile.y - (focused.y + focused.h),
-            secondary: Math.abs(centerX - focusedCenterX),
-          };
-      }
-    })
-    .filter((candidate): candidate is NonNullable<typeof candidate> => candidate !== null)
-    .sort((a, b) => a.primary - b.primary || a.secondary - b.secondary);
+  return candidates[0]?.tile ?? null;
+}
 
-  return candidates[0]?.tile.id ?? focusedTileId;
+function focusCandidate(
+  tile: Tile,
+  focused: Tile,
+  direction: Direction,
+  wrap: boolean,
+): TileFocusCandidate | null {
+  const horizontal = direction === "left" || direction === "right";
+  const overlap = horizontal
+    ? spanOverlap(tile.y, tile.y + tile.h, focused.y, focused.y + focused.h)
+    : spanOverlap(tile.x, tile.x + tile.w, focused.x, focused.x + focused.w);
+  const centerDistance = horizontal
+    ? Math.abs(tile.y + tile.h / 2 - (focused.y + focused.h / 2))
+    : Math.abs(tile.x + tile.w / 2 - (focused.x + focused.w / 2));
+
+  const primary = focusCandidatePrimary(tile, focused, direction, wrap);
+  if (primary === null) return null;
+
+  return {
+    tile,
+    primary,
+    overlapPenalty: overlap > 0 ? 0 : 1,
+    secondary: overlap > 0 ? -overlap : centerDistance,
+    tertiary: centerDistance,
+  };
+}
+
+function focusCandidatePrimary(
+  tile: Tile,
+  focused: Tile,
+  direction: Direction,
+  wrap: boolean,
+): number | null {
+  switch (direction) {
+    case "left":
+      if (!wrap) return tile.x + tile.w <= focused.x ? focused.x - (tile.x + tile.w) : null;
+      return -(tile.x + tile.w);
+    case "right":
+      if (!wrap) return tile.x >= focused.x + focused.w ? tile.x - (focused.x + focused.w) : null;
+      return tile.x;
+    case "up":
+      if (!wrap) return tile.y + tile.h <= focused.y ? focused.y - (tile.y + tile.h) : null;
+      return -(tile.y + tile.h);
+    case "down":
+      if (!wrap) return tile.y >= focused.y + focused.h ? tile.y - (focused.y + focused.h) : null;
+      return tile.y;
+  }
+}
+
+function spanOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): number {
+  return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
 }
 
 export function moveTile(
@@ -110,30 +151,239 @@ export function moveTile(
   return tiles.map((tile) => (tile.id === focused.id ? moved : tile));
 }
 
+export function canResizeTile(
+  tiles: Tile[],
+  focusedTileId: string | null,
+  direction: Direction,
+): boolean {
+  return createTileResizePlan(tiles, focusedTileId, direction) !== null;
+}
+
 export function resizeTile(
   tiles: Tile[],
   focusedTileId: string | null,
   direction: Direction,
 ): Tile[] {
+  const plan = createTileResizePlan(tiles, focusedTileId, direction);
+  if (!plan) return tiles;
+  return tiles.map(plan.updateTile);
+}
+
+type TileResizePlan = {
+  updateTile: (tile: Tile) => Tile;
+};
+
+function createTileResizePlan(
+  tiles: Tile[],
+  focusedTileId: string | null,
+  direction: Direction,
+): TileResizePlan | null {
   const focused = findTile(tiles, focusedTileId);
-  if (!focused) return tiles;
+  if (!focused) return null;
 
-  const resized: Tile = {
-    ...focused,
-    w: focused.w + (direction === "right" ? 1 : direction === "left" ? -1 : 0),
-    h: focused.h + (direction === "down" ? 1 : direction === "up" ? -1 : 0),
-  };
+  return (
+    growFocusedInDirection(tiles, focused, direction) ??
+    shrinkFocusedOppositeDirection(tiles, focused, direction)
+  );
+}
 
-  if (
-    !isValidPlacement(
-      resized,
-      tiles.filter((tile) => tile.id !== focused.id),
-    )
-  ) {
-    return tiles;
+function growFocusedInDirection(
+  tiles: Tile[],
+  focused: Tile,
+  direction: Direction,
+): TileResizePlan | null {
+  switch (direction) {
+    case "left":
+      return growFocusedLeftEdge(tiles, focused);
+    case "right":
+      return growFocusedRightEdge(tiles, focused);
+    case "up":
+      return growFocusedTopEdge(tiles, focused);
+    case "down":
+      return growFocusedBottomEdge(tiles, focused);
   }
+}
 
-  return tiles.map((tile) => (tile.id === focused.id ? resized : tile));
+function shrinkFocusedOppositeDirection(
+  tiles: Tile[],
+  focused: Tile,
+  direction: Direction,
+): TileResizePlan | null {
+  switch (direction) {
+    case "left":
+      return shrinkFocusedRightEdge(tiles, focused);
+    case "right":
+      return shrinkFocusedLeftEdge(tiles, focused);
+    case "up":
+      return shrinkFocusedBottomEdge(tiles, focused);
+    case "down":
+      return shrinkFocusedTopEdge(tiles, focused);
+  }
+}
+
+function growFocusedLeftEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.x <= 0) return null;
+
+  const candidates = tilesAlongLeftEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "y", focused.y, focused.y + focused.h)) return null;
+  if (candidates.some((tile) => tile.w <= MIN_TILE_WIDTH)) return null;
+
+  const shrinkingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, x: tile.x - 1, w: tile.w + 1 };
+    if (shrinkingTileIds.has(tile.id)) return { ...tile, w: tile.w - 1 };
+    return tile;
+  });
+}
+
+function growFocusedRightEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.x + focused.w >= GRID_COLUMNS) return null;
+
+  const candidates = tilesAlongRightEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "y", focused.y, focused.y + focused.h)) return null;
+  if (candidates.some((tile) => tile.w <= MIN_TILE_WIDTH)) return null;
+
+  const shrinkingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, w: tile.w + 1 };
+    if (shrinkingTileIds.has(tile.id)) return { ...tile, x: tile.x + 1, w: tile.w - 1 };
+    return tile;
+  });
+}
+
+function growFocusedTopEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.y <= 0) return null;
+
+  const candidates = tilesAlongTopEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "x", focused.x, focused.x + focused.w)) return null;
+  if (candidates.some((tile) => tile.h <= MIN_TILE_HEIGHT)) return null;
+
+  const shrinkingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, y: tile.y - 1, h: tile.h + 1 };
+    if (shrinkingTileIds.has(tile.id)) return { ...tile, h: tile.h - 1 };
+    return tile;
+  });
+}
+
+function growFocusedBottomEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.y + focused.h >= GRID_ROWS) return null;
+
+  const candidates = tilesAlongBottomEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "x", focused.x, focused.x + focused.w)) return null;
+  if (candidates.some((tile) => tile.h <= MIN_TILE_HEIGHT)) return null;
+
+  const shrinkingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, h: tile.h + 1 };
+    if (shrinkingTileIds.has(tile.id)) return { ...tile, y: tile.y + 1, h: tile.h - 1 };
+    return tile;
+  });
+}
+
+function shrinkFocusedLeftEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.w <= MIN_TILE_WIDTH) return null;
+
+  const candidates = tilesAlongLeftEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "y", focused.y, focused.y + focused.h)) return null;
+
+  const expandingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, x: tile.x + 1, w: tile.w - 1 };
+    if (expandingTileIds.has(tile.id)) return { ...tile, w: tile.w + 1 };
+    return tile;
+  });
+}
+
+function shrinkFocusedRightEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.w <= MIN_TILE_WIDTH) return null;
+
+  const candidates = tilesAlongRightEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "y", focused.y, focused.y + focused.h)) return null;
+
+  const expandingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, w: tile.w - 1 };
+    if (expandingTileIds.has(tile.id)) return { ...tile, x: tile.x - 1, w: tile.w + 1 };
+    return tile;
+  });
+}
+
+function shrinkFocusedTopEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.h <= MIN_TILE_HEIGHT) return null;
+
+  const candidates = tilesAlongTopEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "x", focused.x, focused.x + focused.w)) return null;
+
+  const expandingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, y: tile.y + 1, h: tile.h - 1 };
+    if (expandingTileIds.has(tile.id)) return { ...tile, h: tile.h + 1 };
+    return tile;
+  });
+}
+
+function shrinkFocusedBottomEdge(tiles: Tile[], focused: Tile): TileResizePlan | null {
+  if (focused.h <= MIN_TILE_HEIGHT) return null;
+
+  const candidates = tilesAlongBottomEdge(tiles, focused);
+  if (!tilesCoverSpan(candidates, "x", focused.x, focused.x + focused.w)) return null;
+
+  const expandingTileIds = new Set(candidates.map((tile) => tile.id));
+  return verifiedResizePlan(tiles, (tile) => {
+    if (tile.id === focused.id) return { ...tile, h: tile.h - 1 };
+    if (expandingTileIds.has(tile.id)) return { ...tile, y: tile.y - 1, h: tile.h + 1 };
+    return tile;
+  });
+}
+
+function tilesAlongLeftEdge(tiles: Tile[], focused: Tile): Tile[] {
+  return tiles.filter(
+    (tile) =>
+      tile.id !== focused.id &&
+      tile.x + tile.w === focused.x &&
+      tile.y >= focused.y &&
+      tile.y + tile.h <= focused.y + focused.h,
+  );
+}
+
+function tilesAlongRightEdge(tiles: Tile[], focused: Tile): Tile[] {
+  return tiles.filter(
+    (tile) =>
+      tile.id !== focused.id &&
+      tile.x === focused.x + focused.w &&
+      tile.y >= focused.y &&
+      tile.y + tile.h <= focused.y + focused.h,
+  );
+}
+
+function tilesAlongTopEdge(tiles: Tile[], focused: Tile): Tile[] {
+  return tiles.filter(
+    (tile) =>
+      tile.id !== focused.id &&
+      tile.y + tile.h === focused.y &&
+      tile.x >= focused.x &&
+      tile.x + tile.w <= focused.x + focused.w,
+  );
+}
+
+function tilesAlongBottomEdge(tiles: Tile[], focused: Tile): Tile[] {
+  return tiles.filter(
+    (tile) =>
+      tile.id !== focused.id &&
+      tile.y === focused.y + focused.h &&
+      tile.x >= focused.x &&
+      tile.x + tile.w <= focused.x + focused.w,
+  );
+}
+
+function verifiedResizePlan(
+  tiles: Tile[],
+  updateTile: (tile: Tile) => Tile,
+): TileResizePlan | null {
+  const nextTiles = tiles.map(updateTile);
+  if (!isValidLayout(nextTiles)) return null;
+  return { updateTile };
 }
 
 export type TileSplitDirection = Extract<Direction, "right" | "down">;

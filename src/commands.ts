@@ -1,6 +1,7 @@
 import commandsManifest from "./commandsManifest.json";
 import type { Direction, Tile } from "./types";
 import {
+  canResizeTile,
   closeTile,
   findTile,
   focusTileInDirection,
@@ -35,7 +36,7 @@ export interface Command {
 export interface KeyboardShortcut {
   id: string;
   title: string;
-  keys: string[];
+  keyChords: string[][];
 }
 
 export interface KeyboardShortcutGroup {
@@ -57,6 +58,7 @@ interface CommandManifestEntry {
   title: string;
   shortcutGroup?: string;
   shortcut?: KeyboardShortcutBinding;
+  shortcuts?: KeyboardShortcutBinding[];
 }
 
 const commandMetadata = commandsManifest as CommandManifestEntry[];
@@ -68,11 +70,11 @@ export const keyboardShortcutGroups: KeyboardShortcutGroup[] = shortcutGroupOrde
   .map((title) => ({
     title,
     shortcuts: commandMetadata
-      .filter((command) => command.shortcutGroup === title && command.shortcut)
+      .filter((command) => command.shortcutGroup === title && shortcutsForCommand(command).length)
       .map((command) => ({
         id: command.id,
         title: command.title,
-        keys: command.shortcut?.displayKeys ?? [],
+        keyChords: shortcutsForCommand(command).map((shortcut) => shortcut.displayKeys),
       })),
   }))
   .filter((group) => group.shortcuts.length > 0);
@@ -98,8 +100,8 @@ export function createCommands(): Command[] {
 }
 
 export function commandIdForKeyboardEvent(event: KeyboardEvent): string | null {
-  const command = commandMetadata.find(
-    (metadata) => metadata.shortcut && matchesShortcut(event, metadata.shortcut),
+  const command = commandMetadata.find((metadata) =>
+    shortcutsForCommand(metadata).some((shortcut) => matchesShortcut(event, shortcut)),
   );
   return command?.id ?? null;
 }
@@ -171,7 +173,9 @@ function behaviorForCommand(commandId: string): Pick<Command, "canRun" | "run"> 
 
   if (directionalCommand?.verb === "resize") {
     return {
-      canRun: requiresFocusedTileOutsideFocusMode,
+      canRun: (state) =>
+        requiresFocusedTileOutsideFocusMode(state) &&
+        canResizeTile(state.tiles, state.focusedTileId, directionalCommand.direction),
       run: (api) => {
         api.setTiles((tiles) =>
           resizeTile(tiles, api.getState().focusedTileId, directionalCommand.direction),
@@ -224,6 +228,10 @@ function isDirection(value: string | undefined): value is Direction {
 
 function isTileSplitDirection(value: string | undefined): value is TileSplitDirection {
   return tileSplitDirections.some((direction) => direction === value);
+}
+
+function shortcutsForCommand(command: CommandManifestEntry): KeyboardShortcutBinding[] {
+  return command.shortcuts ?? (command.shortcut ? [command.shortcut] : []);
 }
 
 function matchesShortcut(event: KeyboardEvent, shortcut: KeyboardShortcutBinding): boolean {

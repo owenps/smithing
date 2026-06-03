@@ -476,11 +476,11 @@ export function App() {
                       <span className="tile-focus-badge">
                         Focus mode · <KeyCap size="compact">Esc</KeyCap>
                       </span>
-                    ) : (
+                    ) : debugLayout ? (
                       <span className="tile-meta">
                         {tile.x},{tile.y} {tile.w}×{tile.h}
                       </span>
-                    )}
+                    ) : null}
                   </div>
                   <div className="tile-body">
                     {workspaceRoot ? (

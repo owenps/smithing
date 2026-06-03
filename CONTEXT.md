@@ -1,15 +1,15 @@
-# Smithing
+# Fluidity
 
-Smithing is a unified software development environment for keeping the full development workflow inside one application.
+Fluidity is a unified software development environment for keeping the full development workflow inside one application.
 
 ## Language
 
-**Smithing**:
+**Fluidity**:
 A local-first desktop application for coding, reviewing, managing work, and coordinating agent-assisted development inside one environment.
 _Avoid_: IDE, editor, agent app, cloud IDE
 
 **Project**:
-A root directory that Smithing can register and manage as a unit.
+A root directory that Fluidity can register and manage as a unit.
 _Avoid_: Repository, folder, codebase
 
 **Workspace**:
@@ -17,7 +17,7 @@ A project-scoped working environment with one canonical filesystem root, used to
 _Avoid_: Window, session, branch
 
 **Open Workspace**:
-A workspace currently present in Smithing and eligible to have its Workspace Tile State restored after restart.
+A workspace currently present in Fluidity and eligible to have its Workspace Tile State restored after restart.
 _Avoid_: Tab, window, session
 
 **Current Workspace**:
@@ -33,7 +33,7 @@ The default workspace for a project that is not backed by git, rooted at the pro
 _Avoid_: Main workspace, default workspace
 
 **Discarded Workspace**:
-A workspace that has been intentionally removed from Smithing and deleted from disk by the user.
+A workspace that has been intentionally removed from Fluidity and deleted from disk by the user.
 _Avoid_: Archived workspace, closed workspace, hidden workspace
 
 **Tile**:
@@ -49,7 +49,7 @@ Durable, tile-kind-specific information stored with a tile definition so the til
 _Avoid_: Runtime state, session state, terminal state
 
 **Tool Resume Provider**:
-A known way for Smithing to turn Tile Resume Metadata into launch or resume behavior for a Tool Tile.
+A known way for Fluidity to turn Tile Resume Metadata into launch or resume behavior for a Tool Tile.
 _Avoid_: Backend, resumable backend, session manager
 
 **Workspace Grid**:
@@ -85,7 +85,7 @@ A named user action that can be invoked from the keyboard or command palette.
 _Avoid_: Action, shortcut, menu item
 
 **Settings**:
-Global user preferences that apply across Smithing.
+Global user preferences that apply across Fluidity.
 _Avoid_: Preferences, config
 
 **Project Settings**:
@@ -93,11 +93,11 @@ Preferences that apply to one project.
 _Avoid_: Repository settings, folder settings
 
 **Registered Project**:
-A project root saved in Smithing so its workspaces can be opened and managed later.
+A project root saved in Fluidity so its workspaces can be opened and managed later.
 _Avoid_: Open project, recent folder, repository bookmark, workspace
 
 **Project Registry**:
-The global collection of registered projects known to Smithing.
+The global collection of registered projects known to Fluidity.
 _Avoid_: Project settings, recent projects, folder list
 
 **Integration**:

@@ -173,35 +173,6 @@ body {
   margin: 0 0.4rem;
 }
 
-.debug-layout .top-bar::before {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 19px;
-  z-index: 1000;
-  height: 1px;
-  background: #ff3b30;
-  content: "";
-  pointer-events: none;
-}
-
-.debug-layout .top-bar::after {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--header-content-left);
-  z-index: 1000;
-  width: 1px;
-  background: #34c759;
-  content: "";
-  pointer-events: none;
-}
-
-.debug-layout .scope {
-  outline: 1px solid #0a84ff;
-  outline-offset: 2px;
-}
-
 .toast-stack {
   position: fixed;
   right: 12px;
@@ -1138,6 +1109,14 @@ body {
   min-width: 0;
   color: var(--foreground);
   font-size: 12px;
+}
+
+.keyboard-shortcut-chords {
+  display: inline-flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
 }
 
 .key-chord {
