@@ -31,11 +31,13 @@ Map the current bundled Integration catalog implementation and identify the Rust
 
 ### Acceptance criteria
 
-- [ ] Document how `src/shared/integrationCatalog.json` is consumed today.
-- [ ] Identify the TypeScript tile picker/catalog adapter changes needed for Extension-provided contributions.
-- [ ] Identify the Rust launch/resume/availability validation changes needed for Extension-provided contributions.
-- [ ] Identify persisted Tile State migration needs for assigning existing bundled Integrations to `fluidity.core`.
-- [ ] Call out risks where current code assumes `integrationId + integrationTileId` is globally unique.
+Mapped in [Integration Catalog Seams](integration-catalog-seams.md).
+
+- [x] Document how `src/shared/integrationCatalog.json` is consumed today.
+- [x] Identify the TypeScript tile picker/catalog adapter changes needed for Extension-provided contributions.
+- [x] Identify the Rust launch/resume/availability validation changes needed for Extension-provided contributions.
+- [x] Identify persisted Tile State migration needs for assigning existing bundled Integrations to `fluidity.core`.
+- [x] Call out risks where current code assumes `integrationId + integrationTileId` is globally unique.
 
 ## 3. Design the Extension discovery and reload flow
 
