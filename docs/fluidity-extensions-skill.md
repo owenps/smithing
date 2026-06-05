@@ -85,72 +85,13 @@ Command rules:
 
 ## Examples the Skill should include
 
-### Minimal command-backed Tool Tile
+The Skill should point agents to the copyable examples in `docs/examples/extensions/` and should prefer useful workflow tools over fake schema-only fixtures:
 
-```json
-{
-  "$schema": "https://raw.githubusercontent.com/owenps/fluidity/main/docs/schemas/fluidity-extension.v1.schema.json",
-  "schemaVersion": 1,
-  "id": "example.my-agent",
-  "title": "My Agent",
-  "contributes": {
-    "integrations": [
-      {
-        "id": "my-agent",
-        "title": "My Agent",
-        "tiles": [
-          {
-            "id": "cli",
-            "kind": "tool",
-            "title": "My Agent",
-            "defaultVisible": true,
-            "command": {
-              "argv": ["my-agent"]
-            },
-            "resume": {
-              "strategy": "none"
-            }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+- `example.lazygit`: a Lazygit Tool Tile with `resume.strategy: "none"`.
+- `example.tmux-session`: a tmux Tool Tile with `resume.strategy: "session-id-arg"` and `arg: "-s"`.
+- `example.project-dev-server`: a Project Extension template for commands such as `pnpm dev`, also with `resume.strategy: "none"`.
 
-### Tile with session resume argument and relative icon
-
-```json
-{
-  "schemaVersion": 1,
-  "id": "example.review-agent",
-  "title": "Review Agent",
-  "icon": { "path": "icons/review-agent.svg" },
-  "contributes": {
-    "integrations": [
-      {
-        "id": "review-agent",
-        "title": "Review Agent",
-        "tiles": [
-          {
-            "id": "cli",
-            "kind": "tool",
-            "title": "Review Agent",
-            "icon": { "path": "icons/review-agent.svg" },
-            "command": {
-              "argv": ["review-agent", "--workspace", "."]
-            },
-            "resume": {
-              "strategy": "session-id-arg",
-              "arg": "--session-id"
-            }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+The Skill may inline small excerpts from these examples, but the repository examples and v1 schema should remain the source of truth.
 
 ## Version drift and update guidance
 

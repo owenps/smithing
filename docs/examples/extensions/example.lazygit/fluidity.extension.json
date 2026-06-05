@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/owenps/fluidity/main/docs/schemas/fluidity-extension.v1.schema.json",
+  "schemaVersion": 1,
+  "id": "example.lazygit",
+  "title": "Lazygit",
+  "description": "Adds a Lazygit Integration Tile for the current Workspace.",
+  "contributes": {
+    "integrations": [
+      {
+        "id": "lazygit",
+        "title": "Lazygit",
+        "description": "Terminal UI for git repositories.",
+        "tiles": [
+          {
+            "id": "cli",
+            "kind": "tool",
+            "title": "Lazygit",
+            "description": "Open Lazygit in this Workspace.",
+            "defaultVisible": true,
+            "command": {
+              "argv": ["lazygit"]
+            },
+            "resume": {
+              "strategy": "none"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

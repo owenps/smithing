@@ -1,6 +1,6 @@
 # Extension Definitions
 
-Fluidity v1 Extensions are manifest-only packages described by a `fluidity.extension.json` Extension Definition. The v1 schema lives at [`docs/schemas/fluidity-extension.v1.schema.json`](schemas/fluidity-extension.v1.schema.json).
+Fluidity v1 Extensions are manifest-only packages described by a `fluidity.extension.json` Extension Definition. The v1 schema lives at [`docs/schemas/fluidity-extension.v1.schema.json`](schemas/fluidity-extension.v1.schema.json). Copyable examples live under [`docs/examples/extensions/`](examples/extensions/).
 
 ## v1 shape
 

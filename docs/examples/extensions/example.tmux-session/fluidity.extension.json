@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/owenps/fluidity/main/docs/schemas/fluidity-extension.v1.schema.json",
+  "schemaVersion": 1,
+  "id": "example.tmux-session",
+  "title": "tmux Session",
+  "description": "Adds a tmux Integration Tile that reconnects by Fluidity session id.",
+  "contributes": {
+    "integrations": [
+      {
+        "id": "tmux-session",
+        "title": "tmux Session",
+        "description": "Named tmux session for a Workspace Tool Tile.",
+        "tiles": [
+          {
+            "id": "cli",
+            "kind": "tool",
+            "title": "tmux Session",
+            "description": "Create or attach to a tmux session named by Fluidity Tile Resume Metadata.",
+            "defaultVisible": true,
+            "command": {
+              "argv": ["tmux", "new-session", "-A"]
+            },
+            "resume": {
+              "strategy": "session-id-arg",
+              "arg": "-s"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/owenps/fluidity/main/docs/schemas/fluidity-extension.v1.schema.json",
+  "schemaVersion": 1,
+  "id": "example.project-dev-server",
+  "title": "Project Dev Server",
+  "description": "Template Project Extension for launching a Workspace's development server.",
+  "contributes": {
+    "integrations": [
+      {
+        "id": "project-dev-server",
+        "title": "Project Dev Server",
+        "description": "Project-specific development command.",
+        "tiles": [
+          {
+            "id": "dev",
+            "kind": "tool",
+            "title": "Dev Server",
+            "description": "Run pnpm dev in this Workspace. Replace argv with this Project's real dev command.",
+            "defaultVisible": true,
+            "command": {
+              "argv": ["pnpm", "dev"]
+            },
+            "resume": {
+              "strategy": "none"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
