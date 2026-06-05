@@ -172,9 +172,9 @@ _Avoid_: Fluidity Core, built-ins, default features
 A user- or Fluidity-provided package that contributes capabilities to Fluidity through supported extension points.
 _Avoid_: Plugin, add-on, mod
 
-**User Extension**:
-An Extension installed for the user and available across Fluidity.
-_Avoid_: Global Extension, global extension, personal plugin
+**Global Extension**:
+An Extension installed for this Fluidity app installation and available across all Projects and Workspaces.
+_Avoid_: User Extension, personal extension, app extension
 
 **Project Extension**:
 An Extension associated with a Project and available for that Project's Workspaces.
