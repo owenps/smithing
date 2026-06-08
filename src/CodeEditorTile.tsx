@@ -13,26 +13,6 @@ globalThis.MonacoEnvironment = {
   },
 };
 
-const scratchPath = "code-editor-scratch.ts";
-const scratchContents = `// Fluidity Code Editor
-// Open a Workspace-relative file, edit, then save.
-// Try Vim: h/j/k/l, w/b/e, gg/G, i/a/o, v, y, d, c, u, <C-r>, /, n/N.
-
-interface EditorTile {
-  engine: "monaco";
-  vimMode: boolean;
-  fileReadWrite: boolean;
-}
-
-const editorTile: EditorTile = {
-  engine: "monaco",
-  vimMode: true,
-  fileReadWrite: true,
-};
-
-console.log(editorTile);
-`;
-
 const vimWriteEventName = "fluidity://code-editor-write";
 let vimWriteCommandRegistered = false;
 
@@ -90,7 +70,7 @@ export function CodeEditorTile({
     const file = openFileRef.current;
     const editor = editorRef.current;
     if (!file || !editor) {
-      window.alert("Open a file before saving.");
+      window.alert("Select a file with Cmd+P before saving.");
       return;
     }
 
@@ -123,13 +103,8 @@ export function CodeEditorTile({
     };
     window.addEventListener(vimWriteEventName, saveActiveEditor);
 
-    const model = monaco.editor.createModel(
-      scratchContents,
-      "typescript",
-      monaco.Uri.parse(`inmemory://fluidity/${scratchPath}`),
-    );
     const editor = monaco.editor.create(editorHostRef.current, {
-      model,
+      value: "",
       automaticLayout: true,
       cursorBlinking: "smooth",
       fontFamily: "var(--font-mono)",
@@ -165,9 +140,10 @@ export function CodeEditorTile({
       cursorDisposable.dispose();
       saveDisposable.dispose();
       window.removeEventListener(vimWriteEventName, saveActiveEditor);
+      const model = editor.getModel();
       vimMode.dispose();
       editor.dispose();
-      model.dispose();
+      model?.dispose();
       editorRef.current = null;
     };
   }, []);
@@ -214,7 +190,7 @@ export function CodeEditorTile({
     <div className="code-editor-tile">
       <div className="code-editor-tabstrip" aria-label="Editor tabs">
         <button className="code-editor-tab code-editor-tab-active" type="button">
-          {openFile?.path ?? scratchPath}
+          {openFile?.path ?? "untitled"}
           {dirty ? " ●" : ""}
         </button>
       </div>
