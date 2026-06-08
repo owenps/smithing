@@ -25,7 +25,7 @@ const terminalFontSizeStep = 1;
 
 type SettingsScope = "global" | "project";
 type SettingsCategoryId = "general" | "appearance" | "tiles" | "extensions" | "keybinds";
-type ProjectSettingsCategoryId = "overview" | "workspaces" | "search" | "danger";
+type ProjectSettingsCategoryId = "overview" | "workspaces" | "search";
 type FocusPane = "left" | "right";
 
 const settingsCategories: { id: SettingsCategoryId; title: string }[] = [
@@ -40,7 +40,6 @@ const projectSettingsCategories: { id: ProjectSettingsCategoryId; title: string 
   { id: "overview", title: "Overview" },
   { id: "workspaces", title: "Workspaces" },
   { id: "search", title: "Search" },
-  { id: "danger", title: "Danger Zone" },
 ];
 
 interface SettingsViewProps {
@@ -129,8 +128,8 @@ function controlIdsForSelection(
       ? ["workspace-copy-files", "delete-workspace-branch-on-discard"]
       : [];
   }
-  if (projectCategory === "search") return ["project-search-excludes"];
-  if (projectCategory === "danger") return ["disconnect-project"];
+  if (projectCategory === "overview") return ["disconnect-project"];
+  if (projectCategory === "search") return ["project-search-includes", "project-search-excludes"];
   return [];
 }
 
@@ -165,6 +164,7 @@ export function SettingsView({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const projectPickerRef = useRef<HTMLSelectElement | null>(null);
   const workspaceCopyFilesRef = useRef<HTMLTextAreaElement | null>(null);
+  const projectSearchIncludesRef = useRef<HTMLTextAreaElement | null>(null);
   const projectSearchExcludesRef = useRef<HTMLTextAreaElement | null>(null);
   const [focusPane, setFocusPane] = useState<FocusPane>("left");
   const [settingsScope, setSettingsScope] = useState<SettingsScope>(lastSettingsScope);
@@ -314,6 +314,14 @@ export function SettingsView({
     });
   };
 
+  const updateProjectSearchIncludePaths = (value: string) => {
+    if (!selectedProject) return;
+    onProjectSettingsChange(selectedProject.id, {
+      ...selectedProject.settings,
+      projectSearchIncludePaths: value.length === 0 ? [] : value.split(/\r?\n/),
+    });
+  };
+
   const updateProjectSearchExcludePaths = (value: string) => {
     if (!selectedProject) return;
     onProjectSettingsChange(selectedProject.id, {
@@ -383,6 +391,10 @@ export function SettingsView({
     }
     if (activeControlId === "workspace-copy-files") {
       workspaceCopyFilesRef.current?.focus();
+      return;
+    }
+    if (activeControlId === "project-search-includes") {
+      projectSearchIncludesRef.current?.focus();
       return;
     }
     if (activeControlId === "project-search-excludes") {
@@ -1026,8 +1038,7 @@ export function SettingsView({
 
     if (selectedProjectCategory === "overview") return renderProjectOverviewDetail();
     if (selectedProjectCategory === "workspaces") return renderProjectWorkspacesDetail();
-    if (selectedProjectCategory === "search") return renderProjectSearchDetail();
-    return renderProjectDangerDetail();
+    return renderProjectSearchDetail();
   }
 
   function renderProjectOverviewDetail() {
@@ -1059,6 +1070,7 @@ export function SettingsView({
             </span>
           </div>
         </div>
+        {renderProjectDangerZone()}
       </div>
     );
   }
@@ -1092,29 +1104,29 @@ export function SettingsView({
   function renderProjectSearchDetail() {
     if (!selectedProject) return null;
 
-    return <div className="settings-detail-body">{renderProjectSearchExcludesControl()}</div>;
+    return (
+      <div className="settings-detail-body">
+        {renderProjectSearchIncludesControl()}
+        {renderProjectSearchExcludesControl()}
+      </div>
+    );
   }
 
-  function renderProjectDangerDetail() {
+  function renderProjectDangerZone() {
     if (!selectedProject) return null;
 
     return (
-      <div className="settings-detail-body">
-        <div
-          className="settings-danger-zone settings-danger-zone-flush"
-          aria-label="Project Danger Zone"
-        >
-          <span className="settings-section-title">Danger Zone</span>
-          {renderActionRow({
-            id: "disconnect-project",
-            title: "Disconnect Project",
-            description: `Remove ${selectedProject.name} from ${APP_NAME} without deleting its Project root or branches.`,
-            action:
-              pendingProjectRemovalId === selectedProject.id ? "Confirm disconnect" : "Disconnect",
-            danger: true,
-            onClick: confirmProjectRemoval,
-          })}
-        </div>
+      <div className="settings-danger-zone" aria-label="Project Danger Zone">
+        <span className="settings-section-title">Danger Zone</span>
+        {renderActionRow({
+          id: "disconnect-project",
+          title: "Disconnect Project",
+          description: `Remove ${selectedProject.name} from ${APP_NAME} without deleting its Project root or branches.`,
+          action:
+            pendingProjectRemovalId === selectedProject.id ? "Confirm disconnect" : "Disconnect",
+          danger: true,
+          onClick: confirmProjectRemoval,
+        })}
       </div>
     );
   }
@@ -1148,6 +1160,39 @@ export function SettingsView({
           spellCheck={false}
           onFocus={() => setActiveControlId("workspace-copy-files")}
           onChange={(event) => updateProjectWorkspaceCopyFiles(event.target.value)}
+        />
+      </label>
+    );
+  }
+
+  function renderProjectSearchIncludesControl() {
+    if (!selectedProject) return null;
+    const active = activeControlId === "project-search-includes" && focusPane === "right";
+
+    return (
+      <label
+        className={[
+          "settings-row",
+          "settings-textarea-row",
+          active ? "settings-row-active" : "",
+        ].join(" ")}
+        onClick={() => setActiveControlId("project-search-includes")}
+      >
+        <span className="settings-row-copy">
+          <span className="settings-row-title">Paths included in project search</span>
+          <span className="settings-row-description">
+            Optional Project-root-relative paths. Empty searches the whole Project.
+          </span>
+        </span>
+        <textarea
+          ref={projectSearchIncludesRef}
+          className="settings-textarea-control"
+          value={(selectedProject.settings.projectSearchIncludePaths ?? []).join("\n")}
+          placeholder={"src\ndocs\nREADME.md"}
+          rows={5}
+          spellCheck={false}
+          onFocus={() => setActiveControlId("project-search-includes")}
+          onChange={(event) => updateProjectSearchIncludePaths(event.target.value)}
         />
       </label>
     );

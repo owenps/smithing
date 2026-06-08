@@ -150,6 +150,8 @@ struct ProjectSettings {
     #[serde(default)]
     workspace_copy_files: Vec<String>,
     #[serde(default)]
+    project_search_include_paths: Vec<String>,
+    #[serde(default)]
     project_search_exclude_paths: Vec<String>,
 }
 
@@ -912,10 +914,12 @@ fn project_file_index(
     let workspace_root = PathBuf::from(workspace_root)
         .canonicalize()
         .map_err(|error| error.to_string())?;
+    let include_paths = project_file_index_include_paths(&project_settings);
     let exclude_paths = project_file_index_exclude_paths(&project_settings);
     let mut paths = git_project_file_paths(&workspace_root)
         .unwrap_or_else(|| filesystem_project_file_paths(&workspace_root));
-    paths.retain(|path| !project_file_path_is_excluded(path, &exclude_paths));
+    paths.retain(|path| project_file_path_is_included(path, &include_paths));
+    paths.retain(|path| !project_file_path_matches_roots(path, &exclude_paths));
     paths.sort();
     paths.dedup();
 
@@ -2715,6 +2719,17 @@ fn workspace_file_path(
     Ok(canonical_candidate)
 }
 
+fn project_file_index_include_paths(project_settings: &ProjectSettings) -> Vec<String> {
+    let mut includes: Vec<String> = project_settings
+        .project_search_include_paths
+        .iter()
+        .filter_map(|path| normalize_project_index_path(path))
+        .collect();
+    includes.sort();
+    includes.dedup();
+    includes
+}
+
 fn project_file_index_exclude_paths(project_settings: &ProjectSettings) -> Vec<String> {
     let mut excludes = vec![
         ".git".to_string(),
@@ -2838,10 +2853,14 @@ fn normalize_project_index_path(path: &str) -> Option<String> {
     Some(normalized)
 }
 
-fn project_file_path_is_excluded(path: &str, excludes: &[String]) -> bool {
-    excludes
+fn project_file_path_is_included(path: &str, includes: &[String]) -> bool {
+    includes.is_empty() || project_file_path_matches_roots(path, includes)
+}
+
+fn project_file_path_matches_roots(path: &str, roots: &[String]) -> bool {
+    roots
         .iter()
-        .any(|exclude| path == exclude || path.starts_with(&format!("{exclude}/")))
+        .any(|root| path == root || path.starts_with(&format!("{root}/")))
 }
 
 fn file_version(metadata: &fs::Metadata) -> Result<String, String> {
@@ -2906,6 +2925,36 @@ fn path_to_string(path: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_file_index_filters_include_paths_before_exclude_paths() {
+        let project_settings = ProjectSettings {
+            project_search_include_paths: vec!["src".to_string(), "README.md".to_string()],
+            project_search_exclude_paths: vec![
+                "src/generated".to_string(),
+                "src/secrets.rs".to_string(),
+            ],
+            ..Default::default()
+        };
+
+        let include_paths = project_file_index_include_paths(&project_settings);
+        let exclude_paths = project_file_index_exclude_paths(&project_settings);
+
+        assert!(project_file_path_is_included("src/main.rs", &include_paths));
+        assert!(project_file_path_is_included("README.md", &include_paths));
+        assert!(!project_file_path_is_included(
+            "docs/plan.md",
+            &include_paths
+        ));
+        assert!(project_file_path_matches_roots(
+            "src/generated/schema.rs",
+            &exclude_paths
+        ));
+        assert!(project_file_path_matches_roots(
+            "src/secrets.rs",
+            &exclude_paths
+        ));
+    }
 
     #[test]
     fn copy_configured_workspace_files_preserves_relative_paths_and_warnings() {

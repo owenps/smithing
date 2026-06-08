@@ -82,13 +82,13 @@ Settings and Project Settings save immediately when changed. Project Settings ch
 
 The Project scope categories are:
 
-1. Overview: Project name, root, kind, and root availability.
+1. Overview: Project name, root, kind, root availability, and Project Danger Zone.
 2. Workspaces: Project Settings that affect Workspace behavior.
-3. Danger Zone: Disconnect Project.
+3. Search: Project Search include and exclude paths.
 
 Unavailable Registered Projects remain visible in the Project selector so they can be inspected or disconnected.
 
-Disconnecting a Project from Settings removes that Registered Project, closes its Open Workspaces, and removes Fluidity-managed workspace roots without deleting the Project root or local or remote branches. After disconnecting the selected Project, Settings selects the next Project alphabetically if one exists; otherwise it returns to Global → General.
+Disconnecting a Project from the Overview Danger Zone removes that Registered Project, closes its Open Workspaces, and removes Fluidity-managed workspace roots without deleting the Project root or local or remote branches. After disconnecting the selected Project, Settings selects the next Project alphabetically if one exists; otherwise it returns to Global → General.
 
 ## Git-backed Project Settings
 
@@ -115,3 +115,15 @@ Default: off.
 When enabled, explicit Workspace discard attempts to delete the local Workspace Branch after removing the Workspace/worktree. Fluidity uses safe branch deletion only (`git branch -d`), never force deletion (`-D`), and never deletes remote branches. If git refuses because the branch is not safe to delete, Workspace discard still succeeds and Fluidity shows a warning that the branch was kept. If the branch is already gone, no warning is needed.
 
 Branch deletion is skipped when the Project root is unavailable because Fluidity cannot safely ask git to delete the branch from the Project. Project Disconnect ignores this policy and never deletes branches.
+
+## Project Search Settings
+
+### Paths included in project search
+
+Default: empty, meaning search the whole Project.
+
+Each entry is a Project-root-relative file or directory. When non-empty, Project Search only indexes matching paths and directory descendants.
+
+### Paths excluded from project search
+
+Each entry is a Project-root-relative file or directory. Excludes always win over includes. Directories exclude descendants.
