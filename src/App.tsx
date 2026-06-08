@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import { CodeEditorTile, type CodeEditorOpenFileRequest } from "./CodeEditorTile";
 import { commandIdForKeyboardEvent, createCommands, type AppCommandApi } from "./commands";
 import { KeyCap } from "./KeyCap";
-import { Picker, type PickerItem } from "./Picker";
+import { Picker, PickerShortcutHint, PickerShortcutSeparator, type PickerItem } from "./Picker";
 import { APP_NAME } from "./appConstants";
 import { resetApplication } from "./applicationClient";
 import { SettingsView } from "./SettingsView";
@@ -1222,7 +1222,6 @@ export function App() {
         <Picker
           title="New Workspace"
           items={workspacePickerItems}
-          footer={null}
           onClose={() => setWorkspacePickerOpen(false)}
           onSelect={(item: PickerItem) => {
             if (item.id === "project.add") {
@@ -1239,7 +1238,7 @@ export function App() {
           title="Search Project Files"
           items={projectFileItems}
           maxVisibleItems={10}
-          footer={projectFileIndexLoading ? "Indexing files…" : null}
+          footer={projectFileIndexLoading ? "Indexing files…" : undefined}
           onClose={() => setProjectSearchOpen(false)}
           onSelect={(item: PickerItem) => openProjectFile(item.id)}
         />
@@ -1249,6 +1248,13 @@ export function App() {
         <Picker
           title="New Tile"
           items={tilePickerItems}
+          footer={
+            <>
+              <PickerShortcutHint label="Split right" keys={["Enter"]} />
+              <PickerShortcutSeparator />
+              <PickerShortcutHint label="Split down" keys={["⇧", "Enter"]} />
+            </>
+          }
           onClose={() => setTilePickerOpen(false)}
           onSelect={(item: PickerItem, options) => {
             const catalogItem = findTilePickerItem(configurableTilePickerItems, item.id);

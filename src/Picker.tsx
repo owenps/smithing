@@ -18,9 +18,25 @@ interface PickerProps {
   title: string;
   items: PickerItem[];
   maxVisibleItems?: number;
-  footer?: ReactNode | null;
+  footer?: ReactNode;
   onSelect: (item: PickerItem, options: PickerSelectOptions) => void;
   onClose: () => void;
+}
+
+export function PickerShortcutHint({ label, keys }: { label: string; keys: string[] }) {
+  return (
+    <span className="picker-shortcut-hint">
+      {label} <KeyChord keys={keys} size="compact" />
+    </span>
+  );
+}
+
+export function PickerShortcutSeparator() {
+  return (
+    <span className="picker-shortcut-separator" aria-hidden="true">
+      •
+    </span>
+  );
 }
 
 function pickerItemScore(item: PickerItem, query: string): number | null {
@@ -152,23 +168,11 @@ export function Picker({ title, items, maxVisibleItems, footer, onSelect, onClos
           })}
           {visibleItems.length === 0 ? <div className="picker-empty">No matches</div> : null}
         </div>
-        {footer === null ? null : (
+        {footer ? (
           <div className="picker-footer" aria-label="Picker shortcuts">
-            {footer ?? (
-              <>
-                <span className="picker-shortcut-hint">
-                  Split right <KeyChord keys={["Enter"]} size="compact" />
-                </span>
-                <span className="picker-shortcut-separator" aria-hidden="true">
-                  •
-                </span>
-                <span className="picker-shortcut-hint">
-                  Split down <KeyChord keys={["⇧", "Enter"]} size="compact" />
-                </span>
-              </>
-            )}
+            {footer}
           </div>
-        )}
+        ) : null}
       </section>
     </div>
   );
