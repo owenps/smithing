@@ -732,9 +732,7 @@ export function SettingsView({
         <div className="settings-row">
           <span className="settings-row-copy">
             <span className="settings-row-title">Version</span>
-            <span className="settings-row-description">
-              Current {APP_NAME} application version.
-            </span>
+            <span className="settings-row-description">Installed version.</span>
           </span>
           <span className="settings-row-control">
             <span className="settings-value">{appVersion ?? "Loading…"}</span>
