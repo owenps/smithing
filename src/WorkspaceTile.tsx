@@ -29,6 +29,11 @@ export function WorkspaceTile({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const discardButtonRefs = useRef(new Map<string, HTMLButtonElement>());
   const groups = useMemo(() => groupWorkspacesByProject(workspaces), [workspaces]);
+  const workspaceShortcutHints = useMemo(
+    () => workspaceShortcutHintsById(workspaces),
+    [workspaces],
+  );
+  const [showShortcutHints, setShowShortcutHints] = useState(false);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(
     currentWorkspaceId ?? workspaces[0]?.id ?? null,
   );
@@ -42,6 +47,55 @@ export function WorkspaceTile({
       rootRef.current?.focus();
     }
   }, [active]);
+
+  useEffect(() => {
+    let shortcutHintTimer: number | null = null;
+
+    const clearShortcutHintTimer = () => {
+      if (shortcutHintTimer === null) return;
+      window.clearTimeout(shortcutHintTimer);
+      shortcutHintTimer = null;
+    };
+
+    const hideShortcutHints = () => {
+      clearShortcutHintTimer();
+      setShowShortcutHints(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey && event.key !== "Meta") return;
+      if (shortcutHintTimer !== null) return;
+      shortcutHintTimer = window.setTimeout(() => {
+        shortcutHintTimer = null;
+        setShowShortcutHints(true);
+      }, 1000);
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.key === "Meta" || !event.metaKey) {
+        hideShortcutHints();
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        hideShortcutHints();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
+    window.addEventListener("blur", hideShortcutHints);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      hideShortcutHints();
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+      window.removeEventListener("keyup", onKeyUp, { capture: true });
+      window.removeEventListener("blur", hideShortcutHints);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -165,6 +219,7 @@ export function WorkspaceTile({
                 const current = workspace.id === currentWorkspaceId;
                 const selected = workspace.id === selectedWorkspaceId;
                 const hasStats = Boolean(workspace.linesAdded || workspace.linesDeleted);
+                const shortcutHint = workspaceShortcutHints.get(workspace.id);
 
                 return (
                   <div
@@ -205,7 +260,11 @@ export function WorkspaceTile({
                         </span>
                       </span>
                     ) : null}
-                    {workspace.discardable ? (
+                    {showShortcutHints && shortcutHint ? (
+                      <span className="workspace-stack-shortcut-hint" aria-hidden="true">
+                        {shortcutHint}
+                      </span>
+                    ) : workspace.discardable ? (
                       <button
                         ref={(element) => {
                           if (element) {
@@ -264,6 +323,10 @@ function groupWorkspacesByProject(workspaces: OpenWorkspaceSummary[]): Workspace
 
 function workspaceOptionId(workspaceId: string): string {
   return `workspace-option-${workspaceId}`;
+}
+
+function workspaceShortcutHintsById(workspaces: OpenWorkspaceSummary[]): Map<string, string> {
+  return new Map(workspaces.slice(0, 9).map((workspace, index) => [workspace.id, `⌘${index + 1}`]));
 }
 
 function discardTooltipForWorkspace(current: boolean): string {

@@ -90,6 +90,16 @@ function createLayoutFromTileState(tileState: WorkspaceTileState): LayoutState {
   return createLayoutFromTiles(tileState.tiles.length > 0 ? tileState.tiles : createDefaultTiles());
 }
 
+function workspaceShortcutIndexForKeyboardEvent(event: KeyboardEvent): number | null {
+  if (!event.metaKey || event.altKey || event.ctrlKey || event.shiftKey) return null;
+
+  const digit = /^[1-9]$/.test(event.key)
+    ? event.key
+    : (/^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1] ?? null);
+
+  return digit ? Number(digit) - 1 : null;
+}
+
 function createLayoutFromTiles(tiles: Tile[]): LayoutState {
   return {
     tiles,
@@ -874,6 +884,20 @@ export function App() {
         return;
       }
 
+      const workspaceShortcutIndex = workspaceShortcutIndexForKeyboardEvent(event);
+      if (workspaceShortcutIndex !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (tilePickerOpen || workspacePickerOpen || projectSearchOpen || settingsViewOpen) return;
+
+        const workspace = openWorkspaces[workspaceShortcutIndex];
+        if (workspace) {
+          runSwitchWorkspace(workspace.id);
+        }
+        return;
+      }
+
       const commandId = commandIdForKeyboardEvent(event);
       if (!commandId) return;
 
@@ -893,7 +917,9 @@ export function App() {
   }, [
     commandApi,
     commandById,
+    openWorkspaces,
     projectSearchOpen,
+    runSwitchWorkspace,
     settingsViewOpen,
     tilePickerOpen,
     workspacePickerOpen,

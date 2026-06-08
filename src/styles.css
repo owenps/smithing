@@ -796,17 +796,30 @@ body {
   white-space: nowrap;
 }
 
-.workspace-stack-discard {
-  position: relative;
+.workspace-stack-discard,
+.workspace-stack-shortcut-hint {
   grid-column: 3;
   display: grid;
   place-items: center;
   width: 28px;
+}
+
+.workspace-stack-discard {
+  position: relative;
   border: 0;
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
   opacity: 0;
+}
+
+.workspace-stack-shortcut-hint {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0.45;
+  pointer-events: none;
+  user-select: none;
 }
 
 .workspace-stack-row:hover .workspace-stack-discard,
