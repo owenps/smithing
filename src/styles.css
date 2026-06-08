@@ -1668,7 +1668,6 @@ body {
 .settings-inline-panel {
   display: grid;
   border: 1px solid var(--border);
-  border-top: 0;
   background: var(--popover);
 }
 
@@ -1791,16 +1790,12 @@ body {
   overflow: auto;
 }
 
-.settings-tiles-body {
-  max-width: none;
-}
-
 .settings-tile-picker-panel {
   min-width: 0;
 }
 
 .settings-tile-picker-options {
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 0.75rem;
   max-height: none;
@@ -1827,8 +1822,7 @@ body {
   outline: 1px solid var(--border);
 }
 
-.settings-extensions-body,
-.settings-keybinds-body {
+.settings-extensions-body {
   max-width: none;
 }
 
@@ -2004,21 +1998,13 @@ body {
   padding: 0.75rem;
 }
 
-.settings-keybinds-body {
-  max-width: none;
-}
-
-.settings-keybinds-panel {
-  min-width: 0;
-}
-
 .keyboard-shortcut-groups {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
   gap: 0.85rem;
   overflow: auto;
-  padding: 0.75rem;
+  padding: 0;
 }
 
 .keyboard-shortcut-group {

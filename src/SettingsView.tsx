@@ -101,6 +101,24 @@ function sortedTilePickerConfigurationItems(
   });
 }
 
+function reconcileTilePickerConfigurationItems(
+  currentItems: ConfigurableTilePickerCatalogItem[],
+  nextItems: ConfigurableTilePickerCatalogItem[],
+  visibility: TilePickerVisibility,
+) {
+  const nextItemsById = new Map(nextItems.map((item) => [item.id, item]));
+  const currentIds = new Set(currentItems.map((item) => item.id));
+  const preservedItems = currentItems
+    .map((item) => nextItemsById.get(item.id))
+    .filter((item): item is ConfigurableTilePickerCatalogItem => Boolean(item));
+  const addedItems = nextItems.filter((item) => !currentIds.has(item.id));
+
+  return [
+    ...preservedItems,
+    ...sortedTilePickerConfigurationItems(addedItems, visibility),
+  ];
+}
+
 function controlIdsForSelection(
   scope: SettingsScope,
   globalCategory: SettingsCategoryId,
@@ -111,11 +129,10 @@ function controlIdsForSelection(
   if (scope === "global") {
     if (globalCategory === "general") return ["debug-layout", "reset-application"];
     if (globalCategory === "appearance") {
-      return ["terminal-font-size", "app-theme", "workspace-stat-colors"];
+      return ["terminal-font-size", "app-theme", "tile-headers", "workspace-stat-colors"];
     }
     if (globalCategory === "tiles") {
       return [
-        "tile-headers",
         "tile-picker-refresh",
         "tile-picker-search",
         ...tilePickerItems.map((item) => `tile-picker:${item.id}`),
@@ -183,9 +200,10 @@ export function SettingsView({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(lastSelectedProjectId);
   const [activeControlId, setActiveControlId] = useState("debug-layout");
   const [tilePickerQuery, setTilePickerQuery] = useState("");
-  const tilePickerDisplayItems = useMemo(
-    () => sortedTilePickerConfigurationItems(configurableTilePickerItems, tilePickerVisibility),
-    [configurableTilePickerItems, tilePickerVisibility],
+  const tilePickerPageSelected = settingsScope === "global" && selectedGlobalCategory === "tiles";
+  const tilePickerPageSelectedRef = useRef(tilePickerPageSelected);
+  const [tilePickerDisplayItems, setTilePickerDisplayItems] = useState(() =>
+    sortedTilePickerConfigurationItems(configurableTilePickerItems, tilePickerVisibility),
   );
   const [pendingReset, setPendingReset] = useState(false);
   const [pendingProjectRemovalId, setPendingProjectRemovalId] = useState<string | null>(null);
@@ -220,6 +238,23 @@ export function SettingsView({
     if (!query) return tilePickerDisplayItems;
     return tilePickerDisplayItems.filter((item) => item.title.toLowerCase().includes(query));
   }, [tilePickerDisplayItems, tilePickerQuery]);
+
+  useEffect(() => {
+    const wasTilePickerPageSelected = tilePickerPageSelectedRef.current;
+    tilePickerPageSelectedRef.current = tilePickerPageSelected;
+
+    setTilePickerDisplayItems((currentItems) => {
+      if (!tilePickerPageSelected || !wasTilePickerPageSelected) {
+        return sortedTilePickerConfigurationItems(configurableTilePickerItems, tilePickerVisibility);
+      }
+
+      return reconcileTilePickerConfigurationItems(
+        currentItems,
+        configurableTilePickerItems,
+        tilePickerVisibility,
+      );
+    });
+  }, [configurableTilePickerItems, tilePickerPageSelected, tilePickerVisibility]);
 
   useEffect(() => {
     if (initialCategory) {
@@ -768,6 +803,13 @@ export function SettingsView({
           </span>
         </label>
         {renderToggleRow({
+          id: "tile-headers",
+          title: "Tile headers",
+          description: "Show title bars on workspace tiles.",
+          checked: tileHeadersVisible,
+          onChange: onTileHeadersVisibleChange,
+        })}
+        {renderToggleRow({
           id: "workspace-stat-colors",
           title: "Deletion-positive stats",
           description: "Show deleted-line counts as positive green stats in Workspace tiles.",
@@ -781,19 +823,12 @@ export function SettingsView({
   function renderTilesDetail() {
     return (
       <div className="settings-detail-body settings-tiles-body">
-        {renderToggleRow({
-          id: "tile-headers",
-          title: "Tile headers",
-          description: "Show title bars on workspace tiles.",
-          checked: tileHeadersVisible,
-          onChange: onTileHeadersVisibleChange,
-        })}
         <section
           className="settings-inline-panel settings-detail-panel settings-tile-picker-panel"
-          aria-label="Tile picker settings"
+          aria-label="Tile configuration"
         >
           <div className="settings-inline-panel-header settings-integrations-header">
-            <span>Choose which tiles appear in the picker.</span>
+            <span>Configure which tiles appear in the picker.</span>
             <button
               className={[
                 "settings-integration-refresh-button",
@@ -1019,53 +1054,48 @@ export function SettingsView({
   function renderKeybindsDetail() {
     return (
       <div className="settings-detail-body settings-keybinds-body">
-        <div className="settings-inline-panel settings-detail-panel settings-keybinds-panel">
-          <div className="settings-inline-panel-header">
-            Keybinds are currently fixed. Rebinding will come later.
-          </div>
-          <div className="keyboard-shortcut-groups">
-            {keyboardShortcutGroups.map((group) => (
-              <section
-                className="keyboard-shortcut-group"
-                key={group.title}
-                aria-label={`${group.title} keybinds`}
-              >
-                <h3>{group.title}</h3>
-                <div className="keyboard-shortcut-list">
-                  {group.shortcuts.map((shortcut) => {
-                    const active = activeControlId === shortcut.id && focusPane === "right";
-                    return (
-                      <div
-                        className={[
-                          "keyboard-shortcut-row",
-                          active ? "keyboard-shortcut-row-active" : "",
-                        ].join(" ")}
-                        key={shortcut.id}
-                        onMouseEnter={() => setActiveControlId(shortcut.id)}
-                      >
-                        <span className="keyboard-shortcut-title">{shortcut.title}</span>
-                        <span className="keyboard-shortcut-chords">
-                          {shortcut.keyChords.map((keys, index) => (
-                            <span className="keyboard-shortcut-chord-group" key={keys.join("+")}>
-                              {index > 0 ? (
-                                <span
-                                  className="keyboard-shortcut-chord-delimiter"
-                                  aria-hidden="true"
-                                >
-                                  /
-                                </span>
-                              ) : null}
-                              <KeyChord keys={keys} />
-                            </span>
-                          ))}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
+        <div className="keyboard-shortcut-groups">
+          {keyboardShortcutGroups.map((group) => (
+            <section
+              className="keyboard-shortcut-group"
+              key={group.title}
+              aria-label={`${group.title} keybinds`}
+            >
+              <h3>{group.title}</h3>
+              <div className="keyboard-shortcut-list">
+                {group.shortcuts.map((shortcut) => {
+                  const active = activeControlId === shortcut.id && focusPane === "right";
+                  return (
+                    <div
+                      className={[
+                        "keyboard-shortcut-row",
+                        active ? "keyboard-shortcut-row-active" : "",
+                      ].join(" ")}
+                      key={shortcut.id}
+                      onMouseEnter={() => setActiveControlId(shortcut.id)}
+                    >
+                      <span className="keyboard-shortcut-title">{shortcut.title}</span>
+                      <span className="keyboard-shortcut-chords">
+                        {shortcut.keyChords.map((keys, index) => (
+                          <span className="keyboard-shortcut-chord-group" key={keys.join("+")}>
+                            {index > 0 ? (
+                              <span
+                                className="keyboard-shortcut-chord-delimiter"
+                                aria-hidden="true"
+                              >
+                                /
+                              </span>
+                            ) : null}
+                            <KeyChord keys={keys} />
+                          </span>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
       </div>
     );
