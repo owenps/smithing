@@ -1171,13 +1171,14 @@ fn build_app_menu<R: tauri::Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R
         Some(NativeIcon::PreferencesGeneral),
         None::<&str>,
     )?;
+    let reload_extensions_accelerator = native_accelerator_for_command(RELOAD_EXTENSIONS_MENU_ID);
     let reload_extensions = IconMenuItem::with_id_and_native_icon(
         app,
         RELOAD_EXTENSIONS_MENU_ID,
         "Reload Extensions",
         true,
         None,
-        None::<&str>,
+        reload_extensions_accelerator.as_deref(),
     )?;
     let add_project = IconMenuItem::with_id_and_native_icon(
         app,

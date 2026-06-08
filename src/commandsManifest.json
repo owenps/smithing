@@ -16,7 +16,15 @@
   },
   {
     "id": "extensions.reload",
-    "title": "Reload Extensions"
+    "title": "Reload Extensions",
+    "shortcutGroup": "General",
+    "shortcut": {
+      "key": "r",
+      "meta": true,
+      "shift": true,
+      "displayKeys": ["⌘", "⇧", "R"]
+    },
+    "nativeAccelerator": "Cmd+Shift+R"
   },
   {
     "id": "project.add",

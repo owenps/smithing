@@ -905,8 +905,9 @@ export function App() {
       event.preventDefault();
       event.stopPropagation();
 
-      if (tilePickerOpen || workspacePickerOpen || projectSearchOpen) return;
-      if (settingsViewOpen && commandId !== "settings.open") return;
+      const runsOverOverlay = commandId === "settings.open" || commandId === "extensions.reload";
+      if ((tilePickerOpen || workspacePickerOpen || projectSearchOpen) && !runsOverOverlay) return;
+      if (settingsViewOpen && !runsOverOverlay) return;
 
       const command = commandById.get(commandId);
       if (!command || !command.canRun(layoutRef.current)) return;
