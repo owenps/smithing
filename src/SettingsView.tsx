@@ -114,10 +114,7 @@ function reconcileTilePickerConfigurationItems(
     .filter((item): item is ConfigurableTilePickerCatalogItem => Boolean(item));
   const addedItems = nextItems.filter((item) => !currentIds.has(item.id));
 
-  return [
-    ...preservedItems,
-    ...sortedTilePickerConfigurationItems(addedItems, visibility),
-  ];
+  return [...preservedItems, ...sortedTilePickerConfigurationItems(addedItems, visibility)];
 }
 
 function controlIdsForSelection(
@@ -253,7 +250,10 @@ export function SettingsView({
 
     setTilePickerDisplayItems((currentItems) => {
       if (!tilePickerPageSelected || !wasTilePickerPageSelected) {
-        return sortedTilePickerConfigurationItems(configurableTilePickerItems, tilePickerVisibility);
+        return sortedTilePickerConfigurationItems(
+          configurableTilePickerItems,
+          tilePickerVisibility,
+        );
       }
 
       return reconcileTilePickerConfigurationItems(
