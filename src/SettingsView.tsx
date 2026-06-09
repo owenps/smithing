@@ -99,7 +99,7 @@ function projectSort(left: RegisteredProject, right: RegisteredProject) {
 }
 
 function workspaceBranchPrefixPreview(prefix: string) {
-  return `${prefix.trim()}willow`;
+  return `${prefix.trim()}generated-name`;
 }
 
 function sortedTilePickerConfigurationItems(
