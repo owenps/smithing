@@ -127,6 +127,7 @@ function iconForTileDefinition(icon: TileDefinitionIcon): ReactNode {
   if (icon.kind === "builtin") {
     if (icon.key === "workspace") return <span className="workspace-stack-picker-icon" />;
     if (icon.key === "code") return <span className="code-editor-picker-icon" />;
+    if (icon.key === "diff") return <span className="diff-picker-icon" />;
   }
   if (icon.kind === "key") return iconByKey[icon.key] ?? textIcon(icon.fallbackText);
   return textIcon(icon.fallbackText);

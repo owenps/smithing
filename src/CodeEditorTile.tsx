@@ -35,6 +35,7 @@ globalThis.MonacoEnvironment = {
 };
 
 const vimWriteEventName = "fluidity://code-editor-write";
+const previewShortcutLabel = "⌘⇧V";
 let vimWriteCommandRegistered = false;
 
 const markdownRenderer = new MarkdownIt({
@@ -199,6 +200,10 @@ function isPreviewablePath(path: string | undefined) {
   return isMarkdownPath(path) || isHtmlPath(path);
 }
 
+function previewToggleTooltip(previewOpen: boolean) {
+  return `${previewOpen ? "Show source" : "Show preview"} · ${previewShortcutLabel}`;
+}
+
 function languageIdForPath(path: string) {
   const normalizedPath = path.toLowerCase();
   const basename = normalizedPath.split(/[\\/]/).pop() ?? normalizedPath;
@@ -286,6 +291,7 @@ export function CodeEditorTile({
   openFileRequest,
   onEditorStateChange,
   onFileVisited,
+  onFileSaved,
   onDirtyStateChange,
   onRegisterController,
   confirmDirty,
@@ -299,6 +305,7 @@ export function CodeEditorTile({
   openFileRequest?: CodeEditorOpenFileRequest;
   onEditorStateChange?: (state: CodeEditorTileState | undefined) => void;
   onFileVisited?: (path: string) => void;
+  onFileSaved?: (path: string) => void;
   onDirtyStateChange?: (dirty: boolean) => void;
   onRegisterController?: (controller: CodeEditorController | null) => void;
   confirmDirty?: (options: {
@@ -327,6 +334,7 @@ export function CodeEditorTile({
   const onEditorStateChangeRef = useRef(onEditorStateChange);
   const onDirtyStateChangeRef = useRef(onDirtyStateChange);
   const onFileVisitedRef = useRef(onFileVisited);
+  const onFileSavedRef = useRef(onFileSaved);
   const confirmDirtyRef = useRef(confirmDirty);
   const onToastRef = useRef(onToast);
   const [, setRevision] = useState(0);
@@ -361,6 +369,16 @@ export function CodeEditorTile({
   const publishState = () => {
     onEditorStateChangeRef.current?.(serializeState());
     reportDirty();
+  };
+
+  const togglePreview = () => {
+    if (!isPreviewablePath(activePathRef.current ?? undefined)) return false;
+    setPreviewVisible((visible) => {
+      const nextVisible = !visible;
+      if (!nextVisible) window.requestAnimationFrame(() => editorRef.current?.focus());
+      return nextVisible;
+    });
+    return true;
   };
 
   const setActivePath = (path: string | null) => {
@@ -459,6 +477,7 @@ export function CodeEditorTile({
       tab.conflict = null;
       publishState();
       rerender();
+      onFileSavedRef.current?.(tab.path);
       return true;
     } catch (error) {
       const message = String(error);
@@ -544,9 +563,10 @@ export function CodeEditorTile({
     onEditorStateChangeRef.current = onEditorStateChange;
     onDirtyStateChangeRef.current = onDirtyStateChange;
     onFileVisitedRef.current = onFileVisited;
+    onFileSavedRef.current = onFileSaved;
     confirmDirtyRef.current = confirmDirty;
     onToastRef.current = onToast;
-  }, [confirmDirty, onDirtyStateChange, onEditorStateChange, onFileVisited, onToast]);
+  }, [confirmDirty, onDirtyStateChange, onEditorStateChange, onFileSaved, onFileVisited, onToast]);
 
   useEffect(() => {
     onRegisterController?.({
@@ -561,6 +581,27 @@ export function CodeEditorTile({
     });
     return () => onRegisterController?.(null);
   });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!activeRef.current) return;
+      if (
+        event.key.toLowerCase() !== "v" ||
+        !event.metaKey ||
+        !event.shiftKey ||
+        event.altKey ||
+        event.ctrlKey
+      ) {
+        return;
+      }
+      if (!togglePreview()) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    return () => window.removeEventListener("keydown", onKeyDown, { capture: true });
+  }, []);
 
   useEffect(() => {
     if (!editorHostRef.current) return;
@@ -849,6 +890,7 @@ export function CodeEditorTile({
               className="code-editor-tab code-editor-tab-active code-editor-tab-untitled"
               type="button"
               title="untitled"
+              aria-disabled="true"
             >
               <span className="code-editor-tab-icon" aria-hidden="true">
                 {fileIconForPath("untitled")}
@@ -866,8 +908,8 @@ export function CodeEditorTile({
               type="button"
               aria-label={previewOpen ? "Show source" : "Show preview"}
               aria-pressed={previewOpen}
-              title={previewOpen ? "Show source" : "Show preview"}
-              onClick={() => setPreviewVisible((visible) => !visible)}
+              data-tooltip={previewToggleTooltip(previewOpen)}
+              onClick={togglePreview}
             >
               <span className="code-editor-preview-icon" aria-hidden="true" />
             </button>
@@ -890,13 +932,11 @@ export function CodeEditorTile({
       </div>
       <div className="code-editor-statusline">
         <div ref={statusRef} className="code-editor-vim-status" />
-        <span className="code-editor-tab-note">
-          {currentTab?.conflict === "external"
-            ? "changed on disk"
-            : currentTab?.conflict === "deleted"
-              ? "deleted on disk"
-              : currentTab?.path}
-        </span>
+        {currentTab?.conflict ? (
+          <span className="code-editor-tab-note">
+            {currentTab.conflict === "external" ? "changed on disk" : "deleted on disk"}
+          </span>
+        ) : null}
         <span className="code-editor-cursor-position">
           {cursorPosition.lineNumber}:{cursorPosition.column}
         </span>

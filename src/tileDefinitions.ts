@@ -9,12 +9,13 @@ import {
   type TileResumeMetadata,
 } from "./types";
 
-export type BuiltInTileDefinitionId = "workspace" | "code" | "terminal";
+export type BuiltInTileDefinitionId = "workspace" | "code" | "diff" | "terminal";
 export type TileDefinitionId = BuiltInTileDefinitionId | string;
 
 export type BuiltInTileDefinitionIcon =
   | { kind: "builtin"; key: "workspace"; fallbackText: string }
   | { kind: "builtin"; key: "code"; fallbackText: string }
+  | { kind: "builtin"; key: "diff"; fallbackText: string }
   | { kind: "text"; fallbackText: string };
 
 export type TileDefinitionIcon = BuiltInTileDefinitionIcon | IntegrationCatalogTileIcon;
@@ -22,7 +23,7 @@ export type TileDefinitionIcon = BuiltInTileDefinitionIcon | IntegrationCatalogT
 export type TileDefinition =
   | {
       id: TileDefinitionId;
-      kind: "terminal" | "workspace" | "code";
+      kind: "terminal" | "workspace" | "code" | "diff";
       title: string;
       defaultVisible: boolean;
       icon: TileDefinitionIcon;
@@ -42,6 +43,7 @@ export type TileDefinitionSnapshot =
   | { kind: "terminal"; title: string; resume?: TileResumeMetadata }
   | { kind: "workspace"; title: string }
   | { kind: "code"; title: string; editor?: CodeEditorTileState }
+  | { kind: "diff"; title: string }
   | {
       kind: "tool";
       title: string;
@@ -79,9 +81,18 @@ export const codeEditorTileDefinition = {
   defaultVisible: true,
 } as const satisfies TileDefinition;
 
+export const diffTileDefinition = {
+  id: "diff",
+  kind: "diff",
+  title: "Diff",
+  icon: { kind: "builtin", key: "diff", fallbackText: "D" },
+  defaultVisible: true,
+} as const satisfies TileDefinition;
+
 export const defaultTileDefinitions: TileDefinition[] = [
   workspaceTileDefinition,
   codeEditorTileDefinition,
+  diffTileDefinition,
   terminalTileDefinition,
 ];
 
@@ -108,6 +119,7 @@ export function createTileDefinitions(toolTiles: IntegrationCatalogTile[]): Tile
   return [
     workspaceTileDefinition,
     codeEditorTileDefinition,
+    diffTileDefinition,
     ...toolTiles.map(tileDefinitionFromIntegrationTile),
     terminalTileDefinition,
   ];
@@ -150,6 +162,7 @@ export function createTileFromDefinitionSnapshot(
 
   if (definition.kind === "workspace") return { ...base, kind: "workspace" };
   if (definition.kind === "code") return { ...base, kind: "code", editor: definition.editor };
+  if (definition.kind === "diff") return { ...base, kind: "diff" };
   return { ...base, kind: "terminal", resume: definition.resume };
 }
 
@@ -183,6 +196,7 @@ export function tileDefinitionSnapshotForTile(tile: Tile): TileDefinitionSnapsho
 
   if (tile.kind === "workspace") return { kind: "workspace", title: tile.title };
   if (tile.kind === "code") return { kind: "code", title: tile.title, editor: tile.editor };
+  if (tile.kind === "diff") return { kind: "diff", title: tile.title };
   return { kind: "terminal", title: tile.title, resume: tile.resume };
 }
 

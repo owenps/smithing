@@ -140,6 +140,8 @@ struct AppSettings {
     tile_settings: TileSettings,
     deletion_positive_stat_colors: bool,
     #[serde(default)]
+    diff_color_polarity: DiffColorPolarity,
+    #[serde(default)]
     workspace_branch_prefix: String,
     #[serde(default)]
     tile_picker_visibility: HashMap<String, bool>,
@@ -251,6 +253,14 @@ enum CodeEditorTabTitleMode {
     Basename,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+enum DiffColorPolarity {
+    #[default]
+    Standard,
+    Reversed,
+}
+
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
@@ -260,6 +270,7 @@ impl Default for AppSettings {
             tile_headers_visible: true,
             tile_settings: TileSettings::default(),
             deletion_positive_stat_colors: false,
+            diff_color_polarity: DiffColorPolarity::default(),
             workspace_branch_prefix: String::new(),
             tile_picker_visibility: HashMap::new(),
         }
@@ -553,6 +564,16 @@ struct WorkspaceOverview {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct CurrentWorkspaceGitPatchResponse {
+    workspace_id: Option<String>,
+    available: bool,
+    patch: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    message: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct OpenWorkspaceSummary {
     id: String,
     name: String,
@@ -742,6 +763,76 @@ fn workspace_overview(state: State<'_, WorkspaceState>) -> Result<WorkspaceOverv
     normalize_workspace_stack(&mut app_state);
     state.save(&app_state)?;
     Ok(workspace_overview_for_state(&app_state))
+}
+
+#[tauri::command]
+fn workspace_git_patch_current(
+    state: State<'_, WorkspaceState>,
+) -> Result<CurrentWorkspaceGitPatchResponse, String> {
+    let target = {
+        let app_state = state.app_state.lock().map_err(lock_error)?;
+        let Some(workspace_id) = app_state.current_workspace_id.clone() else {
+            return Ok(unavailable_git_patch_response(
+                None,
+                "No current Workspace.",
+            ));
+        };
+        let Some(workspace) = app_state
+            .open_workspaces
+            .iter()
+            .find(|workspace| workspace.id == workspace_id)
+        else {
+            return Ok(unavailable_git_patch_response(
+                Some(workspace_id),
+                "Current Workspace was not found.",
+            ));
+        };
+        let Some(project) = app_state
+            .projects
+            .iter()
+            .find(|project| project.id == workspace.project_id)
+        else {
+            return Ok(unavailable_git_patch_response(
+                Some(workspace_id),
+                "Current Workspace project was not found.",
+            ));
+        };
+
+        (workspace.id.clone(), workspace.root.clone(), project.kind)
+    };
+
+    let (workspace_id, workspace_root, project_kind) = target;
+    if project_kind != ProjectKind::Git {
+        return Ok(unavailable_git_patch_response(
+            Some(workspace_id),
+            "Current Workspace is not git-backed.",
+        ));
+    }
+
+    match run_git_command(
+        &workspace_root,
+        &["diff", "--no-ext-diff", "--no-color", "HEAD", "--"],
+    ) {
+        Ok(patch) => Ok(CurrentWorkspaceGitPatchResponse {
+            workspace_id: Some(workspace_id),
+            available: true,
+            patch,
+            message: None,
+        }),
+        Err(error) => Ok(unavailable_git_patch_response(Some(workspace_id), &error)),
+    }
+}
+
+fn unavailable_git_patch_response(
+    workspace_id: Option<String>,
+    message: &str,
+) -> CurrentWorkspaceGitPatchResponse {
+    CurrentWorkspaceGitPatchResponse {
+        workspace_id,
+        available: false,
+        patch: String::new(),
+        message: Some(message.to_string()),
+    }
 }
 
 #[tauri::command]
@@ -1310,6 +1401,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             workspace_current,
             workspace_overview,
+            workspace_git_patch_current,
             workspace_discard,
             workspace_switch,
             app_settings_get,

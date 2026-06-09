@@ -4,7 +4,7 @@ use super::{
 };
 
 pub(crate) fn is_builtin_tile_kind(kind: &str) -> bool {
-    matches!(kind, "terminal" | "workspace" | "code")
+    matches!(kind, "terminal" | "workspace" | "code" | "diff")
 }
 
 pub(crate) fn fallback_title_for_builtin_tile(kind: &str) -> Option<&'static str> {
@@ -12,6 +12,7 @@ pub(crate) fn fallback_title_for_builtin_tile(kind: &str) -> Option<&'static str
         "terminal" => Some("Terminal"),
         "workspace" => Some("Workspaces"),
         "code" => Some("Code Editor"),
+        "diff" => Some("Diff"),
         _ => None,
     }
 }

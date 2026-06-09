@@ -6,6 +6,7 @@ import {
   codeEditorFontSizeMin,
   codeEditorTabSizeMax,
   codeEditorTabSizeMin,
+  type DiffColorPolarity,
   normalizeCodeEditorSettings,
   normalizeTerminalTileSettings,
   terminalFontSizeMax,
@@ -66,8 +67,8 @@ interface SettingsViewProps {
   onThemeChange: (themeId: ThemeId) => void;
   tileHeadersVisible: boolean;
   onTileHeadersVisibleChange: (visible: boolean) => void;
-  deletionPositiveStatColors: boolean;
-  onDeletionPositiveStatColorsChange: (enabled: boolean) => void;
+  diffColorPolarity: DiffColorPolarity;
+  onDiffColorPolarityChange: (polarity: DiffColorPolarity) => void;
   workspaceBranchPrefix: string;
   onWorkspaceBranchPrefixChange: (prefix: string) => void;
   tilePickerVisibility: TilePickerVisibility;
@@ -175,7 +176,7 @@ function controlIdsForSelection(
       return ["workspace-branch-prefix", "debug-layout", "reset-application"];
     }
     if (globalCategory === "appearance") {
-      return ["app-theme", "tile-headers", "workspace-stat-colors"];
+      return ["app-theme", "tile-headers", "diff-color-polarity"];
     }
     if (globalCategory === "tiles") {
       return [
@@ -217,8 +218,8 @@ export function SettingsView({
   onThemeChange,
   tileHeadersVisible,
   onTileHeadersVisibleChange,
-  deletionPositiveStatColors,
-  onDeletionPositiveStatColorsChange,
+  diffColorPolarity,
+  onDiffColorPolarityChange,
   workspaceBranchPrefix,
   onWorkspaceBranchPrefixChange,
   tilePickerVisibility,
@@ -243,6 +244,7 @@ export function SettingsView({
   const searchRef = useRef<HTMLInputElement | null>(null);
   const projectPickerRef = useRef<HTMLSelectElement | null>(null);
   const themeRef = useRef<HTMLSelectElement | null>(null);
+  const diffColorPolarityRef = useRef<HTMLSelectElement | null>(null);
   const workspaceBranchPrefixRef = useRef<HTMLInputElement | null>(null);
   const projectWorkspaceBranchPrefixRef = useRef<HTMLInputElement | null>(null);
   const workspaceCopyFilesRef = useRef<HTMLTextAreaElement | null>(null);
@@ -516,10 +518,6 @@ export function SettingsView({
       onDebugLayoutChange(!debugLayout);
       return;
     }
-    if (activeControlId === "workspace-stat-colors") {
-      onDeletionPositiveStatColorsChange(!deletionPositiveStatColors);
-      return;
-    }
     if (activeControlId === "tile-headers") {
       onTileHeadersVisibleChange(!tileHeadersVisible);
       return;
@@ -542,6 +540,10 @@ export function SettingsView({
     }
     if (activeControlId === "app-theme") {
       themeRef.current?.focus();
+      return;
+    }
+    if (activeControlId === "diff-color-polarity") {
+      diffColorPolarityRef.current?.focus();
       return;
     }
     if (activeControlId === "workspace-branch-prefix") {
@@ -988,13 +990,37 @@ export function SettingsView({
           checked: tileHeadersVisible,
           onChange: onTileHeadersVisibleChange,
         })}
-        {renderToggleRow({
-          id: "workspace-stat-colors",
-          title: "Deletion-positive stats",
-          description: "Show deleted-line counts as positive green stats in Workspace tiles.",
-          checked: deletionPositiveStatColors,
-          onChange: onDeletionPositiveStatColorsChange,
-        })}
+        <label
+          className={[
+            "settings-row",
+            activeControlId === "diff-color-polarity" && focusPane === "right"
+              ? "settings-row-active"
+              : "",
+          ].join(" ")}
+          onMouseEnter={() => setActiveControlId("diff-color-polarity")}
+          onFocus={() => setActiveControlId("diff-color-polarity")}
+        >
+          <span className="settings-row-copy">
+            <span className="settings-row-title">Diff colors</span>
+            <span className="settings-row-description">
+              Choose +/- color polarity in Diff and Workspace tiles.
+            </span>
+          </span>
+          <span className="settings-row-control">
+            <select
+              ref={diffColorPolarityRef}
+              className="settings-select-control"
+              value={diffColorPolarity}
+              onFocus={() => setActiveControlId("diff-color-polarity")}
+              onChange={(event) =>
+                onDiffColorPolarityChange(event.currentTarget.value as DiffColorPolarity)
+              }
+            >
+              <option value="standard">Standard</option>
+              <option value="reversed">Reversed</option>
+            </select>
+          </span>
+        </label>
       </div>
     );
   }

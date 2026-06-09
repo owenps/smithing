@@ -13,12 +13,15 @@ export const codeEditorFontSizeMax = 24;
 export const codeEditorTabSizeMin = 1;
 export const codeEditorTabSizeMax = 8;
 
+export type DiffColorPolarity = "standard" | "reversed";
+
 export interface AppSettings {
   debugLayout: boolean;
   themeId: ThemeId;
   tileHeadersVisible: boolean;
   tileSettings: TileSettings;
   deletionPositiveStatColors: boolean;
+  diffColorPolarity: DiffColorPolarity;
   workspaceBranchPrefix: string;
   tilePickerVisibility: TilePickerVisibility;
 }
@@ -120,6 +123,7 @@ export function createDefaultAppSettings(debugLayout = false): AppSettings {
     tileHeadersVisible: true,
     tileSettings: createDefaultTileSettings(),
     deletionPositiveStatColors: false,
+    diffColorPolarity: "standard",
     workspaceBranchPrefix: "",
     tilePickerVisibility: createDefaultTilePickerVisibility(),
   };
@@ -169,6 +173,7 @@ export function normalizeAppSettings(value: Partial<AppSettings> | null | undefi
       typeof value?.deletionPositiveStatColors === "boolean"
         ? value.deletionPositiveStatColors
         : defaults.deletionPositiveStatColors,
+    diffColorPolarity: value?.diffColorPolarity === "reversed" ? "reversed" : "standard",
     workspaceBranchPrefix:
       typeof value?.workspaceBranchPrefix === "string" ? value.workspaceBranchPrefix : "",
     tilePickerVisibility: readTilePickerVisibility(

@@ -21,6 +21,7 @@ import {
   type ThemeId,
 } from "./themeRegistry";
 import { commandIdForKeyboardEvent, createCommands, type AppCommandApi } from "./commands";
+import { DiffTile } from "./DiffTile";
 import { fileIconForPath } from "./fileIcons";
 import { Picker, PickerShortcutHint, PickerShortcutSeparator, type PickerItem } from "./Picker";
 import { APP_NAME } from "./appConstants";
@@ -225,6 +226,7 @@ function tileOptionsForCatalogItem(catalogItem: TilePickerCatalogItem):
   | { kind: "terminal"; title: string }
   | { kind: "workspace"; title: string }
   | { kind: "code"; title: string }
+  | { kind: "diff"; title: string }
   | {
       kind: "tool";
       title: string;
@@ -248,6 +250,10 @@ function tileOptionsForCatalogItem(catalogItem: TilePickerCatalogItem):
 
   if (catalogItem.kind === "code") {
     return { kind: "code", title: catalogItem.title };
+  }
+
+  if (catalogItem.kind === "diff") {
+    return { kind: "diff", title: catalogItem.title };
   }
 
   return { kind: "terminal", title: catalogItem.title };
@@ -277,6 +283,7 @@ export function App() {
   const [dirtyCodeEditorTileIds, setDirtyCodeEditorTileIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [diffRefreshToken, setDiffRefreshToken] = useState(0);
   const [dirtyEditorPrompt, setDirtyEditorPrompt] = useState<DirtyEditorPrompt | null>(null);
   const [settingsViewOpen, setSettingsViewOpen] = useState(false);
   const [settingsViewFocusToken, setSettingsViewFocusToken] = useState(0);
@@ -304,7 +311,7 @@ export function App() {
     tileSettings,
     themeId,
     tileHeadersVisible,
-    deletionPositiveStatColors,
+    diffColorPolarity,
     workspaceBranchPrefix,
     tilePickerVisibility,
   } = settings;
@@ -1256,8 +1263,8 @@ export function App() {
     updateSettings((previous) => ({ ...previous, tileHeadersVisible }));
   };
 
-  const setDeletionPositiveStatColorsSetting = (deletionPositiveStatColors: boolean) => {
-    updateSettings((previous) => ({ ...previous, deletionPositiveStatColors }));
+  const setDiffColorPolaritySetting = (diffColorPolarity: AppSettings["diffColorPolarity"]) => {
+    updateSettings((previous) => ({ ...previous, diffColorPolarity }));
   };
 
   const setWorkspaceBranchPrefixSetting = (workspaceBranchPrefix: string) => {
@@ -1288,6 +1295,7 @@ export function App() {
       | { kind: "terminal"; title: string }
       | { kind: "workspace"; title: string }
       | { kind: "code"; title: string }
+      | { kind: "diff"; title: string }
       | {
           kind: "tool";
           title: string;
@@ -1555,7 +1563,7 @@ export function App() {
                         currentWorkspaceId={currentWorkspaceId}
                         active={focused}
                         showPaths={debugLayout}
-                        deletionPositiveStatColors={deletionPositiveStatColors}
+                        deletionPositiveStatColors={diffColorPolarity === "reversed"}
                         onSwitchWorkspace={runSwitchWorkspace}
                         onDiscardWorkspace={runDiscardWorkspace}
                       />
@@ -1590,12 +1598,20 @@ export function App() {
                           });
                         }}
                         onFileVisited={recordCurrentWorkspaceFileVisit}
+                        onFileSaved={() => setDiffRefreshToken((token) => token + 1)}
                         onDirtyStateChange={(dirty) => setCodeEditorDirtyState(tile.id, dirty)}
                         onRegisterController={(controller) =>
                           registerCodeEditorController(tile.id, controller)
                         }
                         confirmDirty={requestDirtyEditorDisposition}
                         onToast={addToast}
+                      />
+                    ) : tile.kind === "diff" ? (
+                      <DiffTile
+                        workspaceId={currentWorkspaceId}
+                        refreshToken={diffRefreshToken}
+                        themeId={resolvedThemeId}
+                        diffColorPolarity={diffColorPolarity}
                       />
                     ) : tile.kind === "tool" && !integrationCatalogLoaded ? (
                       <div className="tile-placeholder">Loading Integration Tile…</div>
@@ -1668,8 +1684,8 @@ export function App() {
           onThemeChange={setThemeSetting}
           tileHeadersVisible={tileHeadersVisible}
           onTileHeadersVisibleChange={setTileHeadersVisibleSetting}
-          deletionPositiveStatColors={deletionPositiveStatColors}
-          onDeletionPositiveStatColorsChange={setDeletionPositiveStatColorsSetting}
+          diffColorPolarity={diffColorPolarity}
+          onDiffColorPolarityChange={setDiffColorPolaritySetting}
           workspaceBranchPrefix={workspaceBranchPrefix}
           onWorkspaceBranchPrefixChange={setWorkspaceBranchPrefixSetting}
           tilePickerVisibility={tilePickerVisibility}
