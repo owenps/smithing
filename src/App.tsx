@@ -1662,6 +1662,7 @@ export function App() {
                         active={focused}
                         workspaceId={currentWorkspaceId ?? ""}
                         themeId={resolvedThemeId}
+                        diffColorPolarity={diffColorPolarity}
                         settings={normalizeCodeEditorSettings(tileSettings.codeEditor)}
                         editorState={tile.editor}
                         openFileRequest={codeEditorOpenFileRequests[tile.id]}

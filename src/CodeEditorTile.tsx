@@ -24,6 +24,8 @@ import "monaco-editor/min/vs/editor/editor.main.css";
 import { VimMode, initVimMode, type VimAdapterInstance } from "monaco-vim";
 import { registerCodeEditorThemes, type ThemeId } from "./themeRegistry";
 import { readCodeFile, statCodeFile, writeCodeFile } from "./codeFileClient";
+import { getCurrentWorkspaceGitPatch } from "./diffClient";
+import type { DiffColorPolarity } from "./settings";
 import { fileIconForPath } from "./fileIcons";
 import type { ToastSeverity } from "./ToastStack";
 import type { CodeEditorSettings, CodeEditorTileState, CodeEditorViewState } from "./types";
@@ -141,6 +143,8 @@ markdownRenderer.use(markdownAlertPlugin);
 
 type DirtyDisposition = "save" | "discard" | "cancel";
 type FileConflict = "external" | "deleted" | null;
+type GitLineChangeKind = "added" | "modified" | "deleted";
+type GitLineChangeMap = Map<string, Map<number, GitLineChangeKind>>;
 
 interface RuntimeTab {
   path: string;
@@ -203,6 +207,145 @@ function isPreviewablePath(path: string | undefined) {
 function previewToggleTooltip(previewOpen: boolean, showShortcut: boolean) {
   const label = previewOpen ? "Show source" : "Show preview";
   return showShortcut ? `${label} · ${previewShortcutLabel}` : label;
+}
+
+function parseGitPatchPath(path: string, prefix: "a/" | "b/") {
+  const trimmed = path.trimEnd();
+  if (trimmed === "/dev/null") return null;
+
+  const unquoted =
+    trimmed.startsWith('"') && trimmed.endsWith('"')
+      ? trimmed
+          .slice(1, -1)
+          .replaceAll('\\"', '"')
+          .replaceAll("\\t", "\t")
+          .replaceAll("\\n", "\n")
+          .replaceAll("\\\\", "\\")
+      : trimmed;
+
+  return unquoted.startsWith(prefix) ? unquoted.slice(prefix.length) : unquoted;
+}
+
+function setGitLineChange(
+  changes: GitLineChangeMap,
+  path: string,
+  lineNumber: number,
+  kind: GitLineChangeKind,
+) {
+  const fileChanges = changes.get(path) ?? new Map<number, GitLineChangeKind>();
+  if (!changes.has(path)) changes.set(path, fileChanges);
+
+  const previous = fileChanges.get(lineNumber);
+  if (previous === "deleted" || (previous === "modified" && kind === "added")) return;
+  fileChanges.set(lineNumber, kind);
+}
+
+function parseGitLineChanges(patch: string): GitLineChangeMap {
+  const changes: GitLineChangeMap = new Map();
+  const lines = patch.split(/\r?\n/);
+  let path: string | null = null;
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line.startsWith("+++ ")) {
+      path = parseGitPatchPath(line.slice(4), "b/");
+      index += 1;
+      continue;
+    }
+
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
+    if (!path || !hunk) {
+      index += 1;
+      continue;
+    }
+
+    let newLine = Number(hunk[1]);
+    let addedLines: number[] = [];
+    let deletedLineCount = 0;
+
+    const flushChangeGroup = () => {
+      if (!path || (!addedLines.length && !deletedLineCount)) return;
+      if (addedLines.length && deletedLineCount) {
+        addedLines.forEach((lineNumber) =>
+          setGitLineChange(changes, path!, lineNumber, "modified"),
+        );
+      } else if (addedLines.length) {
+        addedLines.forEach((lineNumber) => setGitLineChange(changes, path!, lineNumber, "added"));
+      } else {
+        setGitLineChange(changes, path, Math.max(1, newLine), "deleted");
+      }
+      addedLines = [];
+      deletedLineCount = 0;
+    };
+
+    index += 1;
+    while (index < lines.length) {
+      const hunkLine = lines[index];
+      if (hunkLine.startsWith("diff --git ") || hunkLine.startsWith("@@ ")) break;
+      if (hunkLine.startsWith("\\ No newline")) {
+        index += 1;
+        continue;
+      }
+
+      const marker = hunkLine[0];
+      if (marker === "+" && !hunkLine.startsWith("+++")) {
+        addedLines.push(newLine);
+        newLine += 1;
+      } else if (marker === "-" && !hunkLine.startsWith("---")) {
+        deletedLineCount += 1;
+      } else {
+        flushChangeGroup();
+        if (marker === " ") newLine += 1;
+      }
+      index += 1;
+    }
+    flushChangeGroup();
+  }
+
+  return changes;
+}
+
+const gitLineChangeColors: Record<GitLineChangeKind, string> = {
+  added: "rgba(26, 127, 55, 0.65)",
+  modified: "rgba(210, 153, 34, 0.75)",
+  deleted: "rgba(207, 34, 46, 0.75)",
+};
+
+function gitLineChangeDisplayKind(kind: GitLineChangeKind, polarity: DiffColorPolarity) {
+  if (polarity !== "reversed") return kind;
+  if (kind === "added") return "deleted";
+  if (kind === "deleted") return "added";
+  return kind;
+}
+
+function gitLineChangeDecorations(
+  model: monaco.editor.ITextModel,
+  changes: Map<number, GitLineChangeKind> | undefined,
+  polarity: DiffColorPolarity,
+): monaco.editor.IModelDeltaDecoration[] {
+  if (!changes?.size) return [];
+  const lineCount = Math.max(1, model.getLineCount());
+
+  return [...changes.entries()].map(([lineNumber, kind]) => {
+    const clampedLineNumber = Math.min(Math.max(1, lineNumber), lineCount);
+    const displayKind = gitLineChangeDisplayKind(kind, polarity);
+    return {
+      range: new monaco.Range(clampedLineNumber, 1, clampedLineNumber, 1),
+      options: {
+        isWholeLine: true,
+        marginClassName: `code-editor-git-margin code-editor-git-margin-${kind} code-editor-git-color-${displayKind}`,
+        overviewRuler: {
+          color: gitLineChangeColors[displayKind],
+          position: monaco.editor.OverviewRulerLane.Left,
+        },
+        minimap: {
+          color: gitLineChangeColors[displayKind],
+          position: monaco.editor.MinimapPosition.Gutter,
+        },
+      },
+    };
+  });
 }
 
 function languageIdForPath(path: string) {
@@ -287,6 +430,7 @@ export function CodeEditorTile({
   active,
   workspaceId,
   themeId,
+  diffColorPolarity,
   settings,
   editorState,
   openFileRequest,
@@ -301,6 +445,7 @@ export function CodeEditorTile({
   active: boolean;
   workspaceId: string;
   themeId: ThemeId;
+  diffColorPolarity: DiffColorPolarity;
   settings: CodeEditorSettings;
   editorState?: CodeEditorTileState;
   openFileRequest?: CodeEditorOpenFileRequest;
@@ -321,6 +466,7 @@ export function CodeEditorTile({
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const statusRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
+  const gitDecorationsRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const vimModeRef = useRef<VimAdapterInstance | null>(null);
   const activeRef = useRef(active);
   const workspaceIdRef = useRef(workspaceId);
@@ -328,6 +474,7 @@ export function CodeEditorTile({
   const autoSaveTimerRef = useRef<number | null>(null);
   const tabsRef = useRef<RuntimeTab[]>([]);
   const activePathRef = useRef<string | null>(null);
+  const gitLineChangesRef = useRef<GitLineChangeMap>(new Map());
   const modelUriScopeRef = useRef(crypto.randomUUID());
   const ignoreContentChangeRef = useRef(false);
   const handledOpenFileRequestTokenRef = useRef<number | null>(null);
@@ -350,6 +497,43 @@ export function CodeEditorTile({
   const activeTab = () => tabsRef.current.find((tab) => tab.path === activePathRef.current) ?? null;
   const dirtyTabs = () => tabsRef.current.filter((tab) => tab.dirty);
   const reportDirty = () => onDirtyStateChangeRef.current?.(dirtyTabs().length > 0);
+
+  const applyGitDecorations = () => {
+    const collection = gitDecorationsRef.current;
+    if (!collection) return;
+
+    const tab = activeTab();
+    if (!tab) {
+      collection.clear();
+      return;
+    }
+
+    collection.set(
+      gitLineChangeDecorations(
+        tab.model,
+        gitLineChangesRef.current.get(tab.path),
+        diffColorPolarity,
+      ),
+    );
+  };
+
+  const refreshGitLineChanges = async () => {
+    const targetWorkspaceId = workspaceIdRef.current;
+    if (!targetWorkspaceId) return;
+
+    try {
+      const response = await getCurrentWorkspaceGitPatch();
+      if (workspaceIdRef.current !== targetWorkspaceId) return;
+      if (response.workspaceId && response.workspaceId !== targetWorkspaceId) return;
+      gitLineChangesRef.current = response.available
+        ? parseGitLineChanges(response.patch)
+        : new Map();
+      applyGitDecorations();
+    } catch {
+      gitLineChangesRef.current = new Map();
+      applyGitDecorations();
+    }
+  };
 
   const saveActiveViewState = () => {
     const editor = editorRef.current;
@@ -393,6 +577,7 @@ export function CodeEditorTile({
       ignoreContentChangeRef.current = true;
       editor.setModel(tab?.model ?? null);
       ignoreContentChangeRef.current = false;
+      applyGitDecorations();
       if (tab) restoreViewState(editor, tab.viewState);
       editor.focus();
     }
@@ -480,6 +665,7 @@ export function CodeEditorTile({
       publishState();
       rerender();
       onFileSavedRef.current?.(tab.path);
+      void refreshGitLineChanges();
       return true;
     } catch (error) {
       const message = String(error);
@@ -559,8 +745,25 @@ export function CodeEditorTile({
   }, [workspaceId]);
 
   useEffect(() => {
+    gitLineChangesRef.current = new Map();
+    applyGitDecorations();
+    if (!workspaceId) return;
+
+    void refreshGitLineChanges();
+    const interval = window.setInterval(() => {
+      void refreshGitLineChanges();
+    }, 2500);
+
+    return () => window.clearInterval(interval);
+  }, [workspaceId]);
+
+  useEffect(() => {
     settingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    applyGitDecorations();
+  }, [diffColorPolarity]);
 
   useEffect(() => {
     onEditorStateChangeRef.current = onEditorStateChange;
@@ -638,6 +841,7 @@ export function CodeEditorTile({
       stickyScroll: { enabled: settings.stickyScroll },
     });
     editorRef.current = editor;
+    gitDecorationsRef.current = editor.createDecorationsCollection();
 
     const contentDisposable = editor.onDidChangeModelContent(() => {
       if (ignoreContentChangeRef.current) return;
@@ -681,6 +885,8 @@ export function CodeEditorTile({
       window.removeEventListener(vimWriteEventName, saveActiveEditor);
       vimModeRef.current?.dispose();
       vimModeRef.current = null;
+      gitDecorationsRef.current?.clear();
+      gitDecorationsRef.current = null;
       editor.dispose();
       tabsRef.current.forEach((tab) => tab.model.dispose());
       tabsRef.current = [];

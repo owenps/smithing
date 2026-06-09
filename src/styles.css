@@ -72,6 +72,8 @@
   --code-editor-border: #d0d7de;
   --code-editor-foreground: #24292f;
   --code-editor-muted-foreground: #57606a;
+  --git-addition-foreground: #1a7f37;
+  --git-deletion-foreground: #cf222e;
 }
 
 .dark {
@@ -117,6 +119,8 @@
   --code-editor-border: #2b2b2b;
   --code-editor-foreground: #fafafa;
   --code-editor-muted-foreground: #a1a1a1;
+  --git-addition-foreground: #7ee787;
+  --git-deletion-foreground: #ffa198;
 }
 
 * {
@@ -603,10 +607,10 @@ body {
 }
 
 .diff-tile {
-  --diff-tile-addition-fg: #1a7f37;
+  --diff-tile-addition-fg: var(--git-addition-foreground);
   --diff-tile-addition-bg: rgb(46 160 67 / 0.14);
   --diff-tile-addition-bg-emphasis: rgb(46 160 67 / 0.24);
-  --diff-tile-deletion-fg: #cf222e;
+  --diff-tile-deletion-fg: var(--git-deletion-foreground);
   --diff-tile-deletion-bg: rgb(248 81 73 / 0.13);
   --diff-tile-deletion-bg-emphasis: rgb(248 81 73 / 0.23);
 
@@ -616,10 +620,10 @@ body {
 }
 
 .dark .diff-tile {
-  --diff-tile-addition-fg: #7ee787;
+  --diff-tile-addition-fg: var(--git-addition-foreground);
   --diff-tile-addition-bg: rgb(46 160 67 / 0.16);
   --diff-tile-addition-bg-emphasis: rgb(46 160 67 / 0.28);
-  --diff-tile-deletion-fg: #ffa198;
+  --diff-tile-deletion-fg: var(--git-deletion-foreground);
   --diff-tile-deletion-bg: rgb(248 81 73 / 0.16);
   --diff-tile-deletion-bg-emphasis: rgb(248 81 73 / 0.28);
 }
@@ -934,6 +938,41 @@ body {
   min-width: 0;
 }
 
+.monaco-editor .code-editor-git-margin {
+  --code-editor-git-color: transparent;
+  position: relative;
+}
+
+.monaco-editor .code-editor-git-margin::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--code-editor-git-color);
+  content: "";
+}
+
+.monaco-editor .code-editor-git-color-added {
+  --code-editor-git-color: var(--git-addition-foreground);
+}
+
+.monaco-editor .code-editor-git-color-modified {
+  --code-editor-git-color: #d29922;
+}
+
+.monaco-editor .code-editor-git-color-deleted {
+  --code-editor-git-color: var(--git-deletion-foreground);
+}
+
+.monaco-editor .code-editor-git-margin-deleted::before {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--code-editor-git-color) 0 1px,
+    transparent 1px 3px
+  );
+}
+
 .code-editor-host-hidden {
   display: none;
 }
@@ -1200,19 +1239,19 @@ body {
 }
 
 .workspace-stack-stat-added {
-  color: #22c55e;
+  color: var(--git-addition-foreground);
 }
 
 .workspace-stack-stat-deleted {
-  color: #ff6467;
+  color: var(--git-deletion-foreground);
 }
 
 .workspace-stack-deletion-positive .workspace-stack-stat-added {
-  color: #ff6467;
+  color: var(--git-deletion-foreground);
 }
 
 .workspace-stack-deletion-positive .workspace-stack-stat-deleted {
-  color: #22c55e;
+  color: var(--git-addition-foreground);
 }
 
 .workspace-stack-root {
