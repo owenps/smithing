@@ -1596,7 +1596,6 @@ export function App() {
                         }
                         confirmDirty={requestDirtyEditorDisposition}
                         onToast={addToast}
-                        onOpenFilePicker={openProjectSearch}
                       />
                     ) : tile.kind === "tool" && !integrationCatalogLoaded ? (
                       <div className="tile-placeholder">Loading Integration Tile…</div>

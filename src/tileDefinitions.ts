@@ -2,6 +2,7 @@ import {
   DEFAULT_WORKSPACE_TILE_WIDTH,
   GRID_COLUMNS,
   GRID_ROWS,
+  type CodeEditorTileState,
   type IntegrationCatalogTile,
   type IntegrationCatalogTileIcon,
   type Tile,
@@ -40,7 +41,7 @@ export type TileDefinition =
 export type TileDefinitionSnapshot =
   | { kind: "terminal"; title: string; resume?: TileResumeMetadata }
   | { kind: "workspace"; title: string }
-  | { kind: "code"; title: string }
+  | { kind: "code"; title: string; editor?: CodeEditorTileState }
   | {
       kind: "tool";
       title: string;
@@ -148,7 +149,7 @@ export function createTileFromDefinitionSnapshot(
   }
 
   if (definition.kind === "workspace") return { ...base, kind: "workspace" };
-  if (definition.kind === "code") return { ...base, kind: "code" };
+  if (definition.kind === "code") return { ...base, kind: "code", editor: definition.editor };
   return { ...base, kind: "terminal", resume: definition.resume };
 }
 
@@ -181,7 +182,7 @@ export function tileDefinitionSnapshotForTile(tile: Tile): TileDefinitionSnapsho
   }
 
   if (tile.kind === "workspace") return { kind: "workspace", title: tile.title };
-  if (tile.kind === "code") return { kind: "code", title: tile.title };
+  if (tile.kind === "code") return { kind: "code", title: tile.title, editor: tile.editor };
   return { kind: "terminal", title: tile.title, resume: tile.resume };
 }
 

@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import DOMPurify from "dompurify";
+import MarkdownIt from "markdown-it";
+import type StateCore from "markdown-it/lib/rules_core/state_core.mjs";
+import type Token from "markdown-it/lib/token.mjs";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import "monaco-editor/esm/vs/basic-languages/css/css.contribution.js";
 import "monaco-editor/esm/vs/basic-languages/dockerfile/dockerfile.contribution.js";
@@ -21,7 +25,6 @@ import { VimMode, initVimMode, type VimAdapterInstance } from "monaco-vim";
 import { registerCodeEditorThemes, type ThemeId } from "./themeRegistry";
 import { readCodeFile, statCodeFile, writeCodeFile } from "./codeFileClient";
 import { fileIconForPath } from "./fileIcons";
-import { KeyChord } from "./KeyCap";
 import type { ToastSeverity } from "./ToastStack";
 import type { CodeEditorSettings, CodeEditorTileState, CodeEditorViewState } from "./types";
 
@@ -33,6 +36,107 @@ globalThis.MonacoEnvironment = {
 
 const vimWriteEventName = "fluidity://code-editor-write";
 let vimWriteCommandRegistered = false;
+
+const markdownRenderer = new MarkdownIt({
+  html: true,
+  linkify: true,
+  typographer: false,
+});
+
+const defaultLinkOpenRenderer =
+  markdownRenderer.renderer.rules.link_open ??
+  ((tokens, index, options, _env, self) => self.renderToken(tokens, index, options));
+markdownRenderer.renderer.rules.link_open = (tokens, index, options, env, self) => {
+  tokens[index].attrSet("target", "_blank");
+  tokens[index].attrSet("rel", "noreferrer");
+  return defaultLinkOpenRenderer(tokens, index, options, env, self);
+};
+
+const markdownAlertLabels = {
+  note: "Note",
+  tip: "Tip",
+  important: "Important",
+  warning: "Warning",
+  caution: "Caution",
+} as const;
+
+type MarkdownAlertKind = keyof typeof markdownAlertLabels;
+
+function matchingBlockquoteCloseIndex(tokens: Token[], openIndex: number) {
+  let nesting = 0;
+  for (let index = openIndex; index < tokens.length; index += 1) {
+    if (tokens[index].type === "blockquote_open") nesting += 1;
+    if (tokens[index].type === "blockquote_close") nesting -= 1;
+    if (nesting === 0) return index;
+  }
+  return -1;
+}
+
+function firstInlineIndexInRange(tokens: Token[], startIndex: number, endIndex: number) {
+  for (let index = startIndex; index < endIndex; index += 1) {
+    if (tokens[index].type === "inline") return index;
+  }
+  return -1;
+}
+
+function createMarkdownAlertTitleTokens(state: StateCore, kind: MarkdownAlertKind, level: number) {
+  const titleOpen = new state.Token("paragraph_open", "p", 1);
+  titleOpen.level = level;
+  titleOpen.attrJoin("class", "markdown-alert-title");
+
+  const titleInline = new state.Token("inline", "", 0);
+  titleInline.level = level + 1;
+  titleInline.content = markdownAlertLabels[kind];
+  titleInline.children = [];
+
+  const titleClose = new state.Token("paragraph_close", "p", -1);
+  titleClose.level = level;
+
+  return [titleOpen, titleInline, titleClose];
+}
+
+function markdownAlertPlugin(md: MarkdownIt) {
+  md.core.ruler.after("block", "github_alerts", (state) => {
+    for (let index = 0; index < state.tokens.length; index += 1) {
+      const token = state.tokens[index];
+      if (token.type !== "blockquote_open") continue;
+
+      const closeIndex = matchingBlockquoteCloseIndex(state.tokens, index);
+      if (closeIndex < 0) continue;
+
+      const inlineIndex = firstInlineIndexInRange(state.tokens, index + 1, closeIndex);
+      if (inlineIndex < 0) continue;
+
+      const inlineToken = state.tokens[inlineIndex];
+      const match = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:\r?\n)?/i.exec(
+        inlineToken.content,
+      );
+      if (!match) continue;
+
+      const kind = match[1].toLowerCase() as MarkdownAlertKind;
+      token.attrJoin("class", `markdown-alert markdown-alert-${kind}`);
+      inlineToken.content = inlineToken.content.slice(match[0].length);
+      inlineToken.children = [];
+
+      if (!inlineToken.content.trim()) {
+        inlineToken.hidden = true;
+        state.tokens[inlineIndex - 1].hidden =
+          state.tokens[inlineIndex - 1].type === "paragraph_open";
+        state.tokens[inlineIndex + 1].hidden =
+          state.tokens[inlineIndex + 1].type === "paragraph_close";
+      }
+
+      state.tokens.splice(
+        index + 1,
+        0,
+        ...createMarkdownAlertTitleTokens(state, kind, token.level + 1),
+      );
+      index += 3;
+    }
+  });
+}
+
+markdownRenderer.use(markdownAlertPlugin);
 
 type DirtyDisposition = "save" | "discard" | "cancel";
 type FileConflict = "external" | "deleted" | null;
@@ -76,8 +180,23 @@ function tabTitleForPath(path: string, mode: CodeEditorSettings["tabTitleMode"])
   return path.split(/[\\/]/).pop() ?? path;
 }
 
-function modelUriForPath(path: string) {
-  return monaco.Uri.file(path.startsWith("/") ? path : `/${path}`);
+function modelUriForPath(path: string, scope: string) {
+  return monaco.Uri.from({
+    scheme: "fluidity-code",
+    path: `/${scope}/${path.replace(/^\/+/, "")}`,
+  });
+}
+
+function isMarkdownPath(path: string | undefined) {
+  return Boolean(path && /\.(?:md|markdown)$/i.test(path));
+}
+
+function isHtmlPath(path: string | undefined) {
+  return Boolean(path && /\.(?:html|htm)$/i.test(path));
+}
+
+function isPreviewablePath(path: string | undefined) {
+  return isMarkdownPath(path) || isHtmlPath(path);
 }
 
 function languageIdForPath(path: string) {
@@ -114,6 +233,50 @@ function restoreViewState(
   if (typeof viewState.scrollLeft === "number") editor.setScrollLeft(viewState.scrollLeft);
 }
 
+function sanitizedMarkdownHtml(markdown: string) {
+  const html = markdownRenderer.render(markdown);
+  if (typeof DOMPurify.sanitize === "function") return DOMPurify.sanitize(html);
+
+  const purifier = DOMPurify(window);
+  if (typeof purifier.sanitize === "function") return purifier.sanitize(html);
+
+  return html;
+}
+
+function MarkdownPreview({ markdown }: { markdown: string }) {
+  const html = useMemo(() => {
+    try {
+      return sanitizedMarkdownHtml(markdown);
+    } catch (error) {
+      return `<pre>Preview failed: ${markdownRenderer.utils.escapeHtml(String(error))}</pre>`;
+    }
+  }, [markdown]);
+  return <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function HtmlPreview({ html }: { html: string }) {
+  return <iframe className="html-preview" title="HTML preview" sandbox="" srcDoc={html} />;
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: ReactNode },
+  { errorMessage: string | null }
+> {
+  state = { errorMessage: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { errorMessage: String(error) };
+  }
+
+  render() {
+    if (this.state.errorMessage) {
+      return <div className="preview-error">Preview failed: {this.state.errorMessage}</div>;
+    }
+
+    return this.props.children;
+  }
+}
+
 export function CodeEditorTile({
   active,
   workspaceId,
@@ -127,7 +290,6 @@ export function CodeEditorTile({
   onRegisterController,
   confirmDirty,
   onToast,
-  onOpenFilePicker,
 }: {
   active: boolean;
   workspaceId: string;
@@ -147,7 +309,6 @@ export function CodeEditorTile({
     cancelLabel?: string;
   }) => Promise<DirtyDisposition>;
   onToast?: (toast: { severity: ToastSeverity; title: string; detail?: string }) => void;
-  onOpenFilePicker?: () => void;
 }) {
   const editorHostRef = useRef<HTMLDivElement | null>(null);
   const statusRef = useRef<HTMLDivElement | null>(null);
@@ -159,6 +320,7 @@ export function CodeEditorTile({
   const autoSaveTimerRef = useRef<number | null>(null);
   const tabsRef = useRef<RuntimeTab[]>([]);
   const activePathRef = useRef<string | null>(null);
+  const modelUriScopeRef = useRef(crypto.randomUUID());
   const ignoreContentChangeRef = useRef(false);
   const handledOpenFileRequestTokenRef = useRef<number | null>(null);
   const restoredStateKeyRef = useRef<string | null>(null);
@@ -169,6 +331,7 @@ export function CodeEditorTile({
   const onToastRef = useRef(onToast);
   const [, setRevision] = useState(0);
   const [cursorPosition, setCursorPosition] = useState({ lineNumber: 1, column: 1 });
+  const [previewVisible, setPreviewVisible] = useState(false);
 
   const rerender = () => setRevision((revision) => revision + 1);
   const toast = (severity: ToastSeverity, title: string, detail?: string) => {
@@ -204,6 +367,7 @@ export function CodeEditorTile({
     const editor = editorRef.current;
     saveActiveViewState();
     activePathRef.current = path;
+    setPreviewVisible((visible) => (isPreviewablePath(path ?? undefined) ? visible : false));
     const tab = activeTab();
     if (editor) {
       ignoreContentChangeRef.current = true;
@@ -237,7 +401,11 @@ export function CodeEditorTile({
       tab = {
         path,
         version,
-        model: monaco.editor.createModel(contents, languageIdForPath(path), modelUriForPath(path)),
+        model: monaco.editor.createModel(
+          contents,
+          languageIdForPath(path),
+          modelUriForPath(path, modelUriScopeRef.current),
+        ),
         dirty: false,
         conflict: null,
         viewState,
@@ -505,8 +673,12 @@ export function CodeEditorTile({
   }, [settings]);
 
   useEffect(() => {
-    if (active) editorRef.current?.focus();
-  }, [active]);
+    if (active && !previewVisible) editorRef.current?.focus();
+  }, [active, previewVisible]);
+
+  useEffect(() => {
+    if (!previewVisible) window.requestAnimationFrame(() => editorRef.current?.layout());
+  }, [previewVisible]);
 
   useEffect(() => {
     if (!workspaceId || !editorRef.current) return;
@@ -530,7 +702,7 @@ export function CodeEditorTile({
             model: monaco.editor.createModel(
               response.contents,
               languageIdForPath(response.path),
-              modelUriForPath(response.path),
+              modelUriForPath(response.path, modelUriScopeRef.current),
             ),
             dirty: false,
             conflict: null,
@@ -614,7 +786,6 @@ export function CodeEditorTile({
             ignoreContentChangeRef.current = false;
             tab.version = response.version;
             tab.conflict = null;
-            toast("info", "Reloaded changed file", tab.path);
             publishState();
             rerender();
           })
@@ -627,56 +798,94 @@ export function CodeEditorTile({
 
   const tabs = tabsRef.current;
   const currentTab = activeTab();
+  const markdownTabActive = isMarkdownPath(currentTab?.path);
+  const htmlTabActive = isHtmlPath(currentTab?.path);
+  const previewableTabActive = markdownTabActive || htmlTabActive;
+  const previewOpen = previewableTabActive && previewVisible;
 
-  const showTabs = settings.tabsVisible && tabs.length > 0;
+  const showTabs = settings.tabsVisible;
 
   return (
     <div className={["code-editor-tile", showTabs ? "" : "code-editor-tabs-hidden"].join(" ")}>
       {showTabs ? (
         <div className="code-editor-tabstrip" aria-label="Editor tabs">
-          {tabs.map((tab) => (
+          {tabs.length ? (
+            tabs.map((tab) => (
+              <button
+                key={tab.path}
+                className={[
+                  "code-editor-tab",
+                  tab.path === activePathRef.current ? "code-editor-tab-active" : "",
+                  tab.conflict ? "code-editor-tab-conflict" : "",
+                ].join(" ")}
+                type="button"
+                title={tab.path}
+                onClick={() => setActivePath(tab.path)}
+              >
+                <span className="code-editor-tab-icon" aria-hidden="true">
+                  {fileIconForPath(tab.path)}
+                </span>
+                <span className="code-editor-tab-title">
+                  {tabTitleForPath(tab.path, settings.tabTitleMode)}
+                  {tab.dirty ? " ●" : ""}
+                  {tab.conflict ? " ⚠" : ""}
+                </span>
+                <span
+                  className="code-editor-tab-close"
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={`Close ${tab.path}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    void closeTab(tab.path);
+                  }}
+                >
+                  ×
+                </span>
+              </button>
+            ))
+          ) : (
             <button
-              key={tab.path}
-              className={[
-                "code-editor-tab",
-                tab.path === activePathRef.current ? "code-editor-tab-active" : "",
-                tab.conflict ? "code-editor-tab-conflict" : "",
-              ].join(" ")}
+              className="code-editor-tab code-editor-tab-active code-editor-tab-untitled"
               type="button"
-              title={tab.path}
-              onClick={() => setActivePath(tab.path)}
+              title="untitled"
             >
               <span className="code-editor-tab-icon" aria-hidden="true">
-                {fileIconForPath(tab.path)}
+                {fileIconForPath("untitled")}
               </span>
-              <span className="code-editor-tab-title">
-                {tabTitleForPath(tab.path, settings.tabTitleMode)}
-                {tab.dirty ? " ●" : ""}
-                {tab.conflict ? " ⚠" : ""}
-              </span>
-              <span
-                className="code-editor-tab-close"
-                role="button"
-                tabIndex={-1}
-                aria-label={`Close ${tab.path}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  void closeTab(tab.path);
-                }}
-              >
-                ×
-              </span>
+              <span className="code-editor-tab-title">untitled</span>
             </button>
-          ))}
+          )}
+          {previewableTabActive ? (
+            <button
+              className={[
+                "code-editor-tab-action",
+                "code-editor-preview-toggle",
+                previewOpen ? "code-editor-preview-toggle-active" : "",
+              ].join(" ")}
+              type="button"
+              aria-label={previewOpen ? "Show source" : "Show preview"}
+              aria-pressed={previewOpen}
+              title={previewOpen ? "Show source" : "Show preview"}
+              onClick={() => setPreviewVisible((visible) => !visible)}
+            >
+              <span className="code-editor-preview-icon" aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="code-editor-host-wrap">
-        <div ref={editorHostRef} className="code-editor-host" />
-        {tabs.length === 0 ? (
-          <button className="code-editor-empty-state" type="button" onClick={onOpenFilePicker}>
-            <span>Open file</span>
-            <KeyChord keys={["⌘", "P"]} size="compact" />
-          </button>
+        <div
+          ref={editorHostRef}
+          className={["code-editor-host", previewOpen ? "code-editor-host-hidden" : ""].join(" ")}
+        />
+        {previewOpen ? (
+          <PreviewErrorBoundary key={`${currentTab?.path ?? ""}:${htmlTabActive ? "html" : "md"}`}>
+            {markdownTabActive ? (
+              <MarkdownPreview markdown={currentTab?.model.getValue() ?? ""} />
+            ) : null}
+            {htmlTabActive ? <HtmlPreview html={currentTab?.model.getValue() ?? ""} /> : null}
+          </PreviewErrorBoundary>
         ) : null}
       </div>
       <div className="code-editor-statusline">
