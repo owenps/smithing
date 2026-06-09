@@ -107,8 +107,8 @@ struct PersistedAppState {
     open_workspaces: Vec<OpenWorkspace>,
     #[serde(default)]
     workspace_stack: Vec<String>,
-    #[serde(default, rename = "currentWorkspaceId", skip_serializing)]
-    legacy_current_workspace_id: Option<String>,
+    #[serde(default)]
+    current_workspace_id: Option<String>,
     #[serde(default)]
     generated_workspace_branch_names: Vec<String>,
 }
@@ -121,7 +121,7 @@ impl Default for PersistedAppState {
             projects: Vec::new(),
             open_workspaces: Vec::new(),
             workspace_stack: Vec::new(),
-            legacy_current_workspace_id: None,
+            current_workspace_id: None,
             generated_workspace_branch_names: Vec::new(),
         }
     }
@@ -295,6 +295,7 @@ struct OpenWorkspace {
     root: String,
     git_branch: Option<String>,
     tile_state: WorkspaceTileState,
+    #[allow(dead_code)]
     #[serde(default, skip_serializing)]
     last_used_at: u64,
 }
@@ -1494,12 +1495,11 @@ fn current_workspace_response(app_state: &PersistedAppState) -> Option<CurrentWo
 }
 
 fn current_open_workspace(app_state: &PersistedAppState) -> Option<&OpenWorkspace> {
-    app_state.workspace_stack.iter().find_map(|workspace_id| {
-        app_state
-            .open_workspaces
-            .iter()
-            .find(|workspace| &workspace.id == workspace_id && workspace_root_available(workspace))
-    })
+    let workspace_id = app_state.current_workspace_id.as_ref()?;
+    app_state
+        .open_workspaces
+        .iter()
+        .find(|workspace| &workspace.id == workspace_id && workspace_root_available(workspace))
 }
 
 fn select_or_create_initial_workspace(
@@ -1886,21 +1886,15 @@ fn tiles_overlap(a: &PersistedTile, b: &PersistedTile) -> bool {
 }
 
 fn migrate_workspace_stack(app_state: &mut PersistedAppState) {
-    if !app_state.workspace_stack.is_empty() {
-        return;
+    if app_state.current_workspace_id.is_none() {
+        app_state.current_workspace_id = app_state.workspace_stack.first().cloned();
     }
 
-    if let Some(workspace_id) = app_state.legacy_current_workspace_id.clone() {
-        app_state.workspace_stack.push(workspace_id);
-    }
-
-    let mut remaining = app_state.open_workspaces.clone();
-    remaining.sort_by_key(|workspace| std::cmp::Reverse(workspace.last_used_at));
-    for workspace in remaining {
-        if !app_state.workspace_stack.contains(&workspace.id) {
-            app_state.workspace_stack.push(workspace.id);
-        }
-    }
+    app_state.workspace_stack = app_state
+        .open_workspaces
+        .iter()
+        .map(|workspace| workspace.id.clone())
+        .collect();
 }
 
 fn normalize_workspace_stack(app_state: &mut PersistedAppState) {
@@ -1920,13 +1914,34 @@ fn normalize_workspace_stack(app_state: &mut PersistedAppState) {
             seen.insert(workspace.id.clone());
         }
     }
+
+    if !current_workspace_id_is_available(app_state) {
+        app_state.current_workspace_id =
+            app_state.workspace_stack.iter().find_map(|workspace_id| {
+                app_state
+                    .open_workspaces
+                    .iter()
+                    .find(|workspace| {
+                        &workspace.id == workspace_id && workspace_root_available(workspace)
+                    })
+                    .map(|workspace| workspace.id.clone())
+            });
+    }
+}
+
+fn current_workspace_id_is_available(app_state: &PersistedAppState) -> bool {
+    app_state
+        .current_workspace_id
+        .as_ref()
+        .is_some_and(|workspace_id| {
+            app_state.open_workspaces.iter().any(|workspace| {
+                &workspace.id == workspace_id && workspace_root_available(workspace)
+            })
+        })
 }
 
 fn set_current_workspace(app_state: &mut PersistedAppState, workspace_id: &str) {
-    app_state.workspace_stack.retain(|id| id != workspace_id);
-    app_state
-        .workspace_stack
-        .insert(0, workspace_id.to_string());
+    app_state.current_workspace_id = Some(workspace_id.to_string());
 }
 
 mod workspace_removal {
@@ -2038,7 +2053,14 @@ mod workspace_removal {
             &mut warnings,
         )?;
         delete_workspace_branch_after_discard(&target, &mut warnings);
+        let next_current_workspace_id =
+            if app_state.current_workspace_id.as_deref() == Some(workspace_id) {
+                next_workspace_id_after_single_removal(app_state, workspace_id)
+            } else {
+                app_state.current_workspace_id.clone()
+            };
         remove_workspaces_from_state(app_state, &[workspace_id.to_string()]);
+        app_state.current_workspace_id = next_current_workspace_id;
         normalize_workspace_stack(app_state);
 
         Ok(WorkspaceDiscardResult::Discarded { warnings })
@@ -2335,6 +2357,26 @@ mod workspace_removal {
                 "Local branch {branch} was kept because git did not consider it safe to delete: {error}"
             ));
         }
+    }
+
+    fn next_workspace_id_after_single_removal(
+        app_state: &PersistedAppState,
+        workspace_id: &str,
+    ) -> Option<String> {
+        let removed_index = app_state
+            .workspace_stack
+            .iter()
+            .position(|id| id == workspace_id)?;
+        let remaining = app_state
+            .workspace_stack
+            .iter()
+            .filter(|id| id.as_str() != workspace_id)
+            .collect::<Vec<_>>();
+
+        remaining
+            .get(removed_index)
+            .or_else(|| remaining.last())
+            .map(|workspace_id| (*workspace_id).clone())
     }
 
     pub(super) fn remove_workspaces_from_state(
@@ -3231,17 +3273,20 @@ mod tests {
     }
 
     #[test]
-    fn workspace_stack_migrates_legacy_current_first_then_last_used() {
+    fn workspace_stack_migrates_to_creation_order_and_preserves_current() {
+        let temp_dir = test_temp_dir("fluidity-stack-migration");
+        fs::create_dir_all(&temp_dir).unwrap();
+        let mut workspace_a = test_workspace("workspace-a", 10);
+        let mut workspace_b = test_workspace("workspace-b", 30);
+        workspace_a.root = path_to_string(&temp_dir);
+        workspace_b.root = path_to_string(&temp_dir);
         let mut app_state = PersistedAppState {
             version: APP_STATE_VERSION,
             settings: AppSettings::default(),
             projects: Vec::new(),
-            open_workspaces: vec![
-                test_workspace("workspace-a", 10),
-                test_workspace("workspace-b", 30),
-            ],
+            open_workspaces: vec![workspace_a, workspace_b],
             workspace_stack: Vec::new(),
-            legacy_current_workspace_id: Some("workspace-a".to_string()),
+            current_workspace_id: Some("workspace-a".to_string()),
             generated_workspace_branch_names: Vec::new(),
         };
 
@@ -3251,6 +3296,32 @@ mod tests {
         assert_eq!(
             app_state.workspace_stack,
             vec!["workspace-a", "workspace-b"]
+        );
+        assert_eq!(
+            app_state.current_workspace_id.as_deref(),
+            Some("workspace-a")
+        );
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn set_current_workspace_does_not_reorder_stack() {
+        let mut app_state = PersistedAppState {
+            workspace_stack: vec!["workspace-a".to_string(), "workspace-b".to_string()],
+            current_workspace_id: Some("workspace-a".to_string()),
+            ..PersistedAppState::default()
+        };
+
+        set_current_workspace(&mut app_state, "workspace-b");
+
+        assert_eq!(
+            app_state.workspace_stack,
+            vec!["workspace-a", "workspace-b"]
+        );
+        assert_eq!(
+            app_state.current_workspace_id.as_deref(),
+            Some("workspace-b")
         );
     }
 
@@ -3265,7 +3336,7 @@ mod tests {
                 test_workspace("workspace-b", 0),
             ],
             workspace_stack: vec!["workspace-b".to_string(), "workspace-a".to_string()],
-            legacy_current_workspace_id: None,
+            current_workspace_id: None,
             generated_workspace_branch_names: Vec::new(),
         };
 
@@ -3313,6 +3384,61 @@ mod tests {
         assert_eq!(app_state.open_workspaces.len(), 1);
         assert_eq!(app_state.workspace_stack, vec![workspace.id]);
         assert!(Path::new(&workspace.root).is_dir());
+
+        let _ = fs::remove_dir_all(temp_dir);
+    }
+
+    #[test]
+    fn workspace_discard_selects_next_workspace_at_same_slot() {
+        let temp_dir = test_temp_dir("fluidity-discard-current-slot");
+        let app_data_dir = temp_dir.join("app-data");
+        let project_root = temp_dir.join("project");
+        setup_git_project_root(&project_root);
+        fs::create_dir_all(&app_data_dir).unwrap();
+        let project =
+            test_registered_project("project-1", &project_root, ProjectSettings::default());
+        let mut app_state = PersistedAppState::default();
+        let mut warnings = Vec::new();
+        let workspace_a =
+            create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings).unwrap();
+        let workspace_b =
+            create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings).unwrap();
+        let workspace_c =
+            create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings).unwrap();
+        app_state.projects = vec![project];
+        app_state.open_workspaces = vec![
+            workspace_a.clone(),
+            workspace_b.clone(),
+            workspace_c.clone(),
+        ];
+        app_state.workspace_stack = vec![
+            workspace_a.id.clone(),
+            workspace_b.id.clone(),
+            workspace_c.id.clone(),
+        ];
+        app_state.current_workspace_id = Some(workspace_b.id.clone());
+
+        let result = workspace_removal::workspace_discard(
+            &mut app_state,
+            &app_data_dir,
+            &TerminalState::default(),
+            &workspace_b.id,
+            false,
+        )
+        .unwrap();
+
+        assert!(matches!(
+            result,
+            workspace_removal::WorkspaceDiscardResult::Discarded { .. }
+        ));
+        assert_eq!(
+            app_state.workspace_stack,
+            vec![workspace_a.id.clone(), workspace_c.id.clone()]
+        );
+        assert_eq!(
+            app_state.current_workspace_id.as_deref(),
+            Some(workspace_c.id.as_str())
+        );
 
         let _ = fs::remove_dir_all(temp_dir);
     }
