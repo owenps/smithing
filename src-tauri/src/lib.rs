@@ -333,6 +333,8 @@ struct PersistedTile {
     title: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     editor: Option<CodeEditorTileState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    annotations: Option<Vec<DiffAnnotation>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     extension_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -356,6 +358,21 @@ struct PersistedTile {
 struct TileResumeMetadata {
     provider: String,
     identifier: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DiffAnnotation {
+    id: String,
+    source: String,
+    file_path: String,
+    start_line: u32,
+    end_line: u32,
+    comment: String,
+    selected_diff: String,
+    stale: bool,
+    created_at: String,
+    updated_at: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1964,6 +1981,7 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
                 kind: "terminal".to_string(),
                 title: "Terminal".to_string(),
                 editor: None,
+                annotations: None,
                 extension_id: None,
                 integration_id: None,
                 integration_tile_id: None,
@@ -1980,6 +1998,7 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
                 kind: "workspace".to_string(),
                 title: "Workspaces".to_string(),
                 editor: None,
+                annotations: None,
                 extension_id: None,
                 integration_id: None,
                 integration_tile_id: None,
@@ -2018,6 +2037,12 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
             tile.editor = None;
         } else {
             tile.editor = sanitize_code_editor_state(tile.editor.take());
+        }
+
+        if tile.kind != "diff" {
+            tile.annotations = None;
+        } else {
+            tile.annotations = sanitize_diff_annotations(tile.annotations.take());
         }
 
         if tile.kind == "terminal" {
@@ -2078,6 +2103,38 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
         default_workspace_tile_state()
     } else {
         WorkspaceTileState { tiles }
+    }
+}
+
+fn sanitize_diff_annotations(
+    annotations: Option<Vec<DiffAnnotation>>,
+) -> Option<Vec<DiffAnnotation>> {
+    let mut seen = HashSet::new();
+    let annotations: Vec<DiffAnnotation> = annotations?
+        .into_iter()
+        .filter(|annotation| {
+            let path = Path::new(annotation.file_path.trim());
+            !annotation.id.trim().is_empty()
+                && seen.insert(annotation.id.clone())
+                && matches!(annotation.source.as_str(), "local" | "github")
+                && !annotation.file_path.trim().is_empty()
+                && !path.is_absolute()
+                && path
+                    .components()
+                    .all(|component| matches!(component, std::path::Component::Normal(_)))
+                && annotation.start_line > 0
+                && annotation.end_line >= annotation.start_line
+                && !annotation.comment.trim().is_empty()
+                && !annotation.selected_diff.trim().is_empty()
+                && !annotation.created_at.trim().is_empty()
+                && !annotation.updated_at.trim().is_empty()
+        })
+        .collect();
+
+    if annotations.is_empty() {
+        None
+    } else {
+        Some(annotations)
     }
 }
 
@@ -4191,6 +4248,7 @@ mod tests {
                 kind: "tool".to_string(),
                 title: "Missing Agent".to_string(),
                 editor: None,
+                annotations: None,
                 extension_id: Some("example.missing".to_string()),
                 integration_id: Some("missing-agent".to_string()),
                 integration_tile_id: Some("cli".to_string()),
@@ -4647,6 +4705,7 @@ mod tests {
             kind: "terminal".to_string(),
             title: "Test".to_string(),
             editor: None,
+            annotations: None,
             extension_id: None,
             integration_id: None,
             integration_tile_id: None,
@@ -4666,6 +4725,7 @@ mod tests {
             kind: "tool".to_string(),
             title: "".to_string(),
             editor: None,
+            annotations: None,
             extension_id: None,
             integration_id: None,
             integration_tile_id: None,

@@ -651,6 +651,101 @@ body {
   font-size: var(--font-size-sm);
 }
 
+.diff-annotation {
+  display: grid;
+  gap: 0.45rem;
+  max-width: min(520px, calc(100vw - 120px));
+  margin: 0.35rem 0.6rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--muted) 45%, transparent);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.diff-annotation-stale {
+  border-color: color-mix(in srgb, #d29922 60%, var(--border));
+}
+
+.diff-annotation:focus-within {
+  border-color: var(--ring);
+}
+
+.diff-annotation-heading,
+.diff-annotation-actions,
+.diff-annotation-send-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.diff-annotation-heading {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.diff-annotation-heading strong {
+  color: #d29922;
+}
+
+.diff-annotation-range {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.diff-annotation-comment {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.diff-annotation-textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  padding: 0.4rem;
+}
+
+.diff-annotation-actions button,
+.diff-annotation-send-row button,
+.diff-annotation-send-row select {
+  border: 1px solid var(--border);
+  background: var(--muted);
+  color: var(--foreground);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 0.25rem 0.45rem;
+}
+
+.diff-annotation-actions button:disabled,
+.diff-annotation-send-row button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.diff-annotation-actions button:focus-visible,
+.diff-annotation-send-row button:focus-visible,
+.diff-annotation-send-row select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.diff-annotation-textarea:focus-visible {
+  outline: none;
+}
+
+.diff-annotation-send-row select {
+  min-width: 14rem;
+  max-width: 100%;
+}
+
 .diff-tile-message {
   display: grid;
   place-content: center;

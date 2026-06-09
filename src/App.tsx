@@ -46,6 +46,7 @@ import {
   closeTerminalSessionRuntime,
   closeTerminalSessionRuntimesExceptWorkspaceIds,
   closeTerminalSessionRuntimesForWorkspace,
+  insertTextIntoTerminalSessionRuntime,
 } from "./terminalSessionRuntime";
 import { ToastStack, type AppToast, type ToastSeverity } from "./ToastStack";
 import { WorkspaceTile } from "./WorkspaceTile";
@@ -71,6 +72,8 @@ import {
   GRID_ROWS,
   type CurrentWorkspaceResponse,
   type DirtyConfirmation,
+  type DiffAnnotation,
+  type DiffAnnotationSendTarget,
   type ExtensionSettingsResponse,
   type OpenWorkspaceSummary,
   type ProjectSettings,
@@ -177,6 +180,40 @@ function terminalLaunchForTile(tile: Tile): TerminalLaunch {
   }
 
   return { kind: "shell" };
+}
+
+function geometryLabelForTile(tile: Tile): string {
+  const horizontal =
+    tile.x + tile.w / 2 < GRID_COLUMNS / 3
+      ? "left"
+      : tile.x + tile.w / 2 > (GRID_COLUMNS * 2) / 3
+        ? "right"
+        : "center";
+  const vertical =
+    tile.y + tile.h / 2 < GRID_ROWS / 3
+      ? "top"
+      : tile.y + tile.h / 2 > (GRID_ROWS * 2) / 3
+        ? "bottom"
+        : "middle";
+  if (horizontal === "center" && vertical === "middle") return "center";
+  if (horizontal === "center") return vertical;
+  if (vertical === "middle") return horizontal;
+  return `${vertical}-${horizontal}`;
+}
+
+function terminalSendTargetForTile(
+  tile: Tile,
+  workspaceRoot: string | undefined,
+  focusedTileId: string | null,
+): DiffAnnotationSendTarget | null {
+  if (tile.kind !== "terminal" && tile.kind !== "tool") return null;
+
+  const kind = tile.kind === "tool" ? "Tool" : "Terminal";
+  const focusLabel = tile.id === focusedTileId ? "focused" : null;
+  const parts = [tile.title || kind, geometryLabelForTile(tile), focusLabel, workspaceRoot].filter(
+    Boolean,
+  );
+  return { id: tile.id, label: parts.join(" · ") };
 }
 
 function toolTileResolves(tile: Tile, catalogItems: ConfigurableTilePickerCatalogItem[]): boolean {
@@ -1238,6 +1275,59 @@ export function App() {
   const workspaceRoot = context?.workspace.root;
   const showGitBranch = Boolean(context?.gitBranch && context.gitBranch !== context.workspace.name);
   const projectName = context?.project.name ?? (contextLoaded ? "" : "Loading project");
+  const diffAnnotationSendTargets = useMemo<DiffAnnotationSendTarget[]>(
+    () =>
+      layout.tiles
+        .map((tile) => terminalSendTargetForTile(tile, workspaceRoot, layout.focusedTileId))
+        .filter((target): target is DiffAnnotationSendTarget => Boolean(target)),
+    [layout.focusedTileId, layout.tiles, workspaceRoot],
+  );
+
+  const updateDiffTileAnnotations = useCallback((tileId: string, annotations: DiffAnnotation[]) => {
+    setLayout((previous) => {
+      const currentTile = previous.tiles.find((candidate) => candidate.id === tileId);
+      if (!currentTile || currentTile.kind !== "diff") return previous;
+      if (JSON.stringify(currentTile.annotations ?? []) === JSON.stringify(annotations)) {
+        return previous;
+      }
+
+      return {
+        ...previous,
+        tiles: previous.tiles.map((candidate) =>
+          candidate.id === tileId && candidate.kind === "diff"
+            ? { ...candidate, annotations }
+            : candidate,
+        ),
+      };
+    });
+  }, []);
+
+  const insertDiffAnnotationPayload = useCallback(
+    async (targetTileId: string, payload: string) => {
+      if (!currentWorkspaceId) return false;
+      const inserted = insertTextIntoTerminalSessionRuntime(
+        currentWorkspaceId,
+        targetTileId,
+        payload,
+      );
+      if (inserted) {
+        const target = diffAnnotationSendTargets.find((candidate) => candidate.id === targetTileId);
+        addToast({
+          severity: "success",
+          title: "Comment inserted",
+          detail: target?.label,
+        });
+      } else {
+        addToast({
+          severity: "error",
+          title: "Terminal is not live",
+          detail: "Open/focus the target terminal, then try again.",
+        });
+      }
+      return inserted;
+    },
+    [addToast, currentWorkspaceId, diffAnnotationSendTargets],
+  );
 
   const updateSettings = (updater: (previous: AppSettings) => AppSettings) => {
     setSettings((previous) => {
@@ -1612,6 +1702,14 @@ export function App() {
                         refreshToken={diffRefreshToken}
                         themeId={resolvedThemeId}
                         diffColorPolarity={diffColorPolarity}
+                        annotations={tile.annotations ?? []}
+                        sendTargets={diffAnnotationSendTargets.filter(
+                          (target) => target.id !== tile.id,
+                        )}
+                        onAnnotationsChange={(annotations) =>
+                          updateDiffTileAnnotations(tile.id, annotations)
+                        }
+                        onInsertAnnotationPayload={insertDiffAnnotationPayload}
                       />
                     ) : tile.kind === "tool" && !integrationCatalogLoaded ? (
                       <div className="tile-placeholder">Loading Integration Tile…</div>

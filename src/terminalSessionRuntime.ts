@@ -26,6 +26,7 @@ export interface TerminalSessionRuntime {
   setTerminalFontSize(fontSize: number): void;
   setTheme(): void;
   setOnResumeAssigned(onResumeAssigned: (resume: TileResumeMetadata) => void): void;
+  insertText(data: string): boolean;
   detach(host: HTMLElement): void;
 }
 
@@ -46,6 +47,15 @@ export function createTerminalSessionRuntime(
   const runtime = new BrowserTerminalSessionRuntime(options);
   terminalSessionRuntimes.set(key, runtime);
   return runtime;
+}
+
+export function insertTextIntoTerminalSessionRuntime(
+  workspaceId: string,
+  tileId: string,
+  data: string,
+): boolean {
+  const runtime = terminalSessionRuntimes.get(terminalSessionRuntimeKey(workspaceId, tileId));
+  return runtime?.insertText(data) ?? false;
 }
 
 export function closeTerminalSessionRuntime(workspaceId: string, tileId: string) {
@@ -214,6 +224,14 @@ class BrowserTerminalSessionRuntime implements TerminalSessionRuntime {
 
   setOnResumeAssigned(onResumeAssigned: (resume: TileResumeMetadata) => void) {
     this.onResumeAssigned = onResumeAssigned;
+  }
+
+  insertText(data: string) {
+    if (this.disposed || !this.sessionId) return false;
+
+    this.terminal.paste(data);
+    this.terminal.focus();
+    return true;
   }
 
   setTheme() {

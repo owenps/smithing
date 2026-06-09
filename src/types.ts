@@ -87,8 +87,29 @@ export interface CodeEditorWorkspaceTile extends BaseTile {
   editor?: CodeEditorTileState;
 }
 
+export type DiffAnnotationSource = "local" | "github";
+
+export interface DiffAnnotation {
+  id: string;
+  source: DiffAnnotationSource;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  comment: string;
+  selectedDiff: string;
+  stale: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface DiffWorkspaceTile extends BaseTile {
   kind: "diff";
+  annotations?: DiffAnnotation[];
+}
+
+export interface DiffAnnotationSendTarget {
+  id: string;
+  label: string;
 }
 
 export type Tile =
