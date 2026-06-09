@@ -489,29 +489,43 @@ fn load_extension_directory(
     }
 }
 
-fn extension_settings_entry(
+fn extension_provenance(
     source_kind: &str,
     extension_id: &str,
-    title: &str,
-    status: &str,
     manifest_path: Option<String>,
     project_id: Option<String>,
     project_root: Option<String>,
-    diagnostics: Vec<ExtensionDiagnostic>,
-    tiles: Vec<ExtensionSettingsTile>,
-) -> ExtensionSettingsEntry {
-    ExtensionSettingsEntry {
+) -> ExtensionContributionProvenance {
+    ExtensionContributionProvenance {
         source_kind: source_kind.to_string(),
         extension_id: extension_id.to_string(),
-        title: if title.trim().is_empty() {
-            extension_id.to_string()
-        } else {
-            title.to_string()
-        },
-        status: status.to_string(),
         manifest_path,
         project_id,
         project_root,
+    }
+}
+
+fn extension_settings_entry(
+    provenance: ExtensionContributionProvenance,
+    title: &str,
+    status: &str,
+    diagnostics: Vec<ExtensionDiagnostic>,
+    tiles: Vec<ExtensionSettingsTile>,
+) -> ExtensionSettingsEntry {
+    let title = if title.trim().is_empty() {
+        provenance.extension_id.clone()
+    } else {
+        title.to_string()
+    };
+
+    ExtensionSettingsEntry {
+        source_kind: provenance.source_kind,
+        extension_id: provenance.extension_id,
+        title,
+        status: status.to_string(),
+        manifest_path: provenance.manifest_path,
+        project_id: provenance.project_id,
+        project_root: provenance.project_root,
         diagnostics,
         tiles,
     }
@@ -544,13 +558,15 @@ fn load_extension_definition(
             );
             snapshot.diagnostics.push(diagnostic.clone());
             snapshot.extensions.push(extension_settings_entry(
-                source_kind,
-                extension_dir_name,
+                extension_provenance(
+                    source_kind,
+                    extension_dir_name,
+                    Some(manifest_path_string),
+                    project_id,
+                    project_root,
+                ),
                 extension_dir_name,
                 "invalid",
-                Some(manifest_path_string),
-                project_id,
-                project_root,
                 vec![diagnostic],
                 Vec::new(),
             ));
@@ -576,13 +592,15 @@ fn load_extension_definition(
             );
             snapshot.diagnostics.push(diagnostic.clone());
             snapshot.extensions.push(extension_settings_entry(
-                source_kind,
-                extension_dir_name,
+                extension_provenance(
+                    source_kind,
+                    extension_dir_name,
+                    Some(manifest_path_string),
+                    project_id,
+                    project_root,
+                ),
                 extension_dir_name,
                 "invalid",
-                Some(manifest_path_string),
-                project_id,
-                project_root,
                 vec![diagnostic],
                 Vec::new(),
             ));
@@ -606,13 +624,15 @@ fn load_extension_definition(
         );
         snapshot.diagnostics.push(diagnostic.clone());
         snapshot.extensions.push(extension_settings_entry(
-            source_kind,
-            &definition.id,
+            extension_provenance(
+                source_kind,
+                &definition.id,
+                Some(manifest_path_string),
+                project_id,
+                project_root,
+            ),
             &definition.title,
             "invalid",
-            Some(manifest_path_string),
-            project_id,
-            project_root,
             vec![diagnostic],
             Vec::new(),
         ));
@@ -638,13 +658,15 @@ fn load_extension_definition(
         );
         snapshot.diagnostics.push(diagnostic.clone());
         snapshot.extensions.push(extension_settings_entry(
-            source_kind,
-            &definition.id,
+            extension_provenance(
+                source_kind,
+                &definition.id,
+                Some(manifest_path_string),
+                project_id,
+                project_root,
+            ),
             &definition.title,
             "skipped",
-            Some(manifest_path_string),
-            project_id,
-            project_root,
             vec![diagnostic],
             Vec::new(),
         ));
@@ -714,13 +736,9 @@ fn load_extension_definition(
     }
 
     snapshot.extensions.push(extension_settings_entry(
-        source_kind,
-        &definition.id,
+        provenance,
         &definition.title,
         "loaded",
-        Some(manifest_path_string),
-        provenance.project_id,
-        provenance.project_root,
         extension_diagnostics,
         extension_tiles,
     ));

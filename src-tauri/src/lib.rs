@@ -156,22 +156,13 @@ fn default_code_editor_tab_size() -> u32 {
     2
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TileSettings {
     #[serde(default)]
     terminal: TerminalTileSettings,
     #[serde(default)]
     code_editor: CodeEditorSettings,
-}
-
-impl Default for TileSettings {
-    fn default() -> Self {
-        Self {
-            terminal: TerminalTileSettings::default(),
-            code_editor: CodeEditorSettings::default(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
