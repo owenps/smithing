@@ -1183,7 +1183,7 @@ export function SettingsView({
             onMouseEnter={() => setActiveControlId("extensions-reload")}
             onClick={onReloadExtensions}
           >
-            Reload Extensions
+            Refresh
           </button>
         </div>
         {!extensionSettingsLoaded ? (
