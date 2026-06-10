@@ -125,7 +125,9 @@ type RecentProjectFilesByWorkspace = Record<string, string[]>;
 const maxRecentProjectFiles = 10;
 const recentProjectFilesStorageKey = "fluidity.recentProjectFilesByWorkspace";
 function waitForNextPaint(): Promise<void> {
-  return new Promise((resolve) => window.requestAnimationFrame(() => window.setTimeout(resolve, 0)));
+  return new Promise((resolve) =>
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0)),
+  );
 }
 
 function loadRecentProjectFilesByWorkspace(): RecentProjectFilesByWorkspace {
@@ -1037,7 +1039,13 @@ export function App() {
 
       void switchCurrentWorkspace();
     },
-    [addToast, applyWorkspaceOverview, currentWorkspaceId, discardingWorkspaceId, guardDirtyCodeEditors],
+    [
+      addToast,
+      applyWorkspaceOverview,
+      currentWorkspaceId,
+      discardingWorkspaceId,
+      guardDirtyCodeEditors,
+    ],
   );
 
   const runDiscardWorkspace = useCallback(
@@ -1995,7 +2003,8 @@ export function App() {
           title="New Workspace"
           items={workspacePickerItems}
           onClose={() => {
-            if (!workspaceCreationProjectId && !discardingWorkspaceId) setWorkspacePickerOpen(false);
+            if (!workspaceCreationProjectId && !discardingWorkspaceId)
+              setWorkspacePickerOpen(false);
           }}
           onSelect={(item: PickerItem) => {
             if (workspaceCreationProjectId || discardingWorkspaceId) return;
