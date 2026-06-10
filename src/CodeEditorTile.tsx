@@ -27,6 +27,12 @@ import { readCodeFile, statCodeFile, writeCodeFile } from "./codeFileClient";
 import { getCurrentWorkspaceGitPatch } from "./diffClient";
 import type { DiffColorPolarity } from "./settings";
 import { fileIconForPath } from "./fileIcons";
+import {
+  markdownTaskListPlugin,
+  taskListTargetFromEventTarget,
+  toggleMarkdownTaskListItem,
+  type MarkdownTaskListTarget,
+} from "./markdownTaskLists";
 import type { ToastSeverity } from "./ToastStack";
 import type { CodeEditorSettings, CodeEditorTileState, CodeEditorViewState } from "./types";
 
@@ -140,6 +146,7 @@ function markdownAlertPlugin(md: MarkdownIt) {
 }
 
 markdownRenderer.use(markdownAlertPlugin);
+markdownRenderer.use(markdownTaskListPlugin);
 
 type DirtyDisposition = "save" | "discard" | "cancel";
 type FileConflict = "external" | "deleted" | null;
@@ -392,7 +399,13 @@ function sanitizedMarkdownHtml(markdown: string) {
   return html;
 }
 
-function MarkdownPreview({ markdown }: { markdown: string }) {
+function MarkdownPreview({
+  markdown,
+  onTaskCheckboxToggle,
+}: {
+  markdown: string;
+  onTaskCheckboxToggle?: (target: MarkdownTaskListTarget) => void;
+}) {
   const html = useMemo(() => {
     try {
       return sanitizedMarkdownHtml(markdown);
@@ -400,7 +413,19 @@ function MarkdownPreview({ markdown }: { markdown: string }) {
       return `<pre>Preview failed: ${markdownRenderer.utils.escapeHtml(String(error))}</pre>`;
     }
   }, [markdown]);
-  return <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: html }} />;
+
+  return (
+    <div
+      className="markdown-preview"
+      dangerouslySetInnerHTML={{ __html: html }}
+      onClickCapture={(event) => {
+        const target = taskListTargetFromEventTarget(event.target);
+        if (!target) return;
+        event.preventDefault();
+        if (event.metaKey) onTaskCheckboxToggle?.(target);
+      }}
+    />
+  );
 }
 
 function HtmlPreview({ html }: { html: string }) {
@@ -686,6 +711,20 @@ export function CodeEditorTile({
       return false;
     }
     return saveTab(tab);
+  };
+
+  const toggleActiveMarkdownTask = (target: MarkdownTaskListTarget) => {
+    const tab = activeTab();
+    if (!tab || !isMarkdownPath(tab.path)) return;
+
+    const nextValue = toggleMarkdownTaskListItem(tab.model.getValue(), target);
+    if (nextValue === tab.model.getValue()) return;
+
+    tab.model.pushEditOperations(
+      null,
+      [{ range: tab.model.getFullModelRange(), text: nextValue }],
+      () => null,
+    );
   };
 
   const saveAll = async () => {
@@ -1139,7 +1178,10 @@ export function CodeEditorTile({
         {previewOpen ? (
           <PreviewErrorBoundary key={`${currentTab?.path ?? ""}:${htmlTabActive ? "html" : "md"}`}>
             {markdownTabActive ? (
-              <MarkdownPreview markdown={currentTab?.model.getValue() ?? ""} />
+              <MarkdownPreview
+                markdown={currentTab?.model.getValue() ?? ""}
+                onTaskCheckboxToggle={toggleActiveMarkdownTask}
+              />
             ) : null}
             {htmlTabActive ? <HtmlPreview html={currentTab?.model.getValue() ?? ""} /> : null}
           </PreviewErrorBoundary>

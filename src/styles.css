@@ -774,6 +774,17 @@ body {
   color: var(--muted-foreground);
 }
 
+.notepad-preview .markdown-task-list-item,
+.markdown-preview .markdown-task-list-item {
+  list-style: none;
+}
+
+.notepad-preview .markdown-task-checkbox,
+.markdown-preview .markdown-task-checkbox {
+  margin: 0 0.45em 0 -1.25em;
+  vertical-align: -0.1em;
+}
+
 .diff-tile {
   --diff-tile-addition-fg: var(--git-addition-foreground);
   --diff-tile-addition-bg: rgb(46 160 67 / 0.14);

@@ -2,8 +2,14 @@ import DOMPurify from "dompurify";
 import MarkdownIt from "markdown-it";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { useEffect, useMemo, useRef } from "react";
+import {
+  markdownTaskListPlugin,
+  taskListTargetFromEventTarget,
+  toggleMarkdownTaskListItem,
+} from "./markdownTaskLists";
 
 const markdown = new MarkdownIt({ html: false, linkify: true, typographer: true });
+markdown.use(markdownTaskListPlugin);
 
 const languageAliases: Record<string, string> = {
   bash: "shell",
@@ -39,6 +45,14 @@ export function NotepadTile({ active, markdownEnabled, value, onChange }: Notepa
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewVisible = markdownEnabled && !active;
   const previewHtml = useMemo(() => DOMPurify.sanitize(markdown.render(value)), [value]);
+
+  const toggleTaskCheckbox = (target: EventTarget | null, metaKey: boolean) => {
+    const taskTarget = taskListTargetFromEventTarget(target);
+    if (!taskTarget || !metaKey) return;
+
+    const nextValue = toggleMarkdownTaskListItem(value, taskTarget);
+    if (nextValue !== value) onChange(nextValue);
+  };
 
   useEffect(() => {
     if (active) textareaRef.current?.focus();
@@ -80,6 +94,11 @@ export function NotepadTile({ active, markdownEnabled, value, onChange }: Notepa
             ref={previewRef}
             className="notepad-preview"
             dangerouslySetInnerHTML={{ __html: previewHtml }}
+            onClickCapture={(event) => {
+              if (!taskListTargetFromEventTarget(event.target)) return;
+              event.preventDefault();
+              toggleTaskCheckbox(event.target, event.metaKey);
+            }}
           />
         ) : (
           <div className="notepad-preview notepad-preview-empty">Think here...</div>
