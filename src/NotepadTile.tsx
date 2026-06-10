@@ -25,6 +25,7 @@ const languageAliases: Record<string, string> = {
 
 interface NotepadTileProps {
   active: boolean;
+  focusToken: number;
   markdownEnabled: boolean;
   value: string;
   onChange: (value: string) => void;
@@ -36,7 +37,13 @@ function normalizeLanguage(language: string) {
   return languageAliases[normalized] ?? normalized;
 }
 
-export function NotepadTile({ active, markdownEnabled, value, onChange }: NotepadTileProps) {
+export function NotepadTile({
+  active,
+  focusToken,
+  markdownEnabled,
+  value,
+  onChange,
+}: NotepadTileProps) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLDivElement | null>(null);
   const previewVisible = markdownEnabled && !active;
@@ -44,7 +51,7 @@ export function NotepadTile({ active, markdownEnabled, value, onChange }: Notepa
 
   useEffect(() => {
     if (active) textareaRef.current?.focus();
-  }, [active]);
+  }, [active, focusToken]);
 
   useEffect(() => {
     if (!previewVisible || !previewRef.current) return;

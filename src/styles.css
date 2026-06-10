@@ -774,6 +774,13 @@ body {
   color: var(--muted-foreground);
 }
 
+.notepad-preview ul:has(> .markdown-task-list-item),
+.notepad-preview ol:has(> .markdown-task-list-item),
+.markdown-preview ul:has(> .markdown-task-list-item),
+.markdown-preview ol:has(> .markdown-task-list-item) {
+  padding-left: 1.75em;
+}
+
 .notepad-preview .markdown-task-list-item,
 .markdown-preview .markdown-task-list-item {
   list-style: none;
@@ -781,7 +788,7 @@ body {
 
 .notepad-preview .markdown-task-checkbox,
 .markdown-preview .markdown-task-checkbox {
-  margin: 0 0.45em 0 -1.25em;
+  margin: 0 0.3em 0 -1.35em;
   vertical-align: -0.1em;
 }
 
@@ -1619,6 +1626,16 @@ body {
   box-shadow: inset 2px 0 0 var(--primary);
 }
 
+.workspace-stack-row-locked:not(.workspace-stack-row-discarding) {
+  opacity: 0.55;
+}
+
+.workspace-stack-row-locked,
+.workspace-stack-row-locked .workspace-stack-switch,
+.workspace-stack-row-locked .workspace-stack-discard {
+  cursor: wait;
+}
+
 .workspace-stack-switch {
   display: grid;
   min-width: 0;
@@ -1634,6 +1651,10 @@ body {
 
 .workspace-stack-switch:focus {
   outline: none;
+}
+
+.workspace-stack-switch:disabled {
+  cursor: wait;
 }
 
 .workspace-stack-name-row {
@@ -1691,7 +1712,8 @@ body {
 }
 
 .workspace-stack-discard,
-.workspace-stack-shortcut-hint {
+.workspace-stack-shortcut-hint,
+.workspace-stack-discarding-spinner {
   grid-column: 3;
   display: grid;
   place-items: center;
@@ -1720,6 +1742,11 @@ body {
 .workspace-stack-row-selected .workspace-stack-discard,
 .workspace-stack-discard:focus {
   opacity: 1;
+}
+
+.workspace-stack-discarding-spinner {
+  color: var(--foreground);
+  font-size: 13px;
 }
 
 .workspace-stack-discard:hover,
@@ -2097,6 +2124,14 @@ body {
 
 .picker-shortcut-separator {
   color: var(--border);
+}
+
+.braille-spinner {
+  display: inline-block;
+  width: 1ch;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .modal-backdrop {

@@ -25,7 +25,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::{
@@ -72,7 +72,7 @@ const DEFAULT_THEME_ID: &str = "system";
 struct WorkspaceState {
     state_path: PathBuf,
     app_data_dir: PathBuf,
-    app_state: Mutex<PersistedAppState>,
+    app_state: Arc<Mutex<PersistedAppState>>,
 }
 
 impl WorkspaceState {
@@ -88,7 +88,7 @@ impl WorkspaceState {
         Ok(Self {
             state_path,
             app_data_dir,
-            app_state: Mutex::new(app_state),
+            app_state: Arc::new(Mutex::new(app_state)),
         })
     }
 
@@ -994,44 +994,52 @@ fn project_add(state: State<'_, WorkspaceState>) -> Result<ProjectAddResponse, S
 }
 
 #[tauri::command]
-fn workspace_create(
+async fn workspace_create(
     state: State<'_, WorkspaceState>,
     request: WorkspaceCreateRequest,
 ) -> Result<WorkspaceCreateResponse, String> {
     let app_data_dir = state.app_data_dir.clone();
-    let mut app_state = state.app_state.lock().map_err(lock_error)?;
-    let project = app_state
-        .projects
-        .iter()
-        .find(|project| project.id == request.project_id)
-        .cloned()
-        .ok_or_else(|| "project not found".to_string())?;
+    let state_path = state.state_path.clone();
+    let app_state = state.app_state.clone();
 
-    if project.kind != ProjectKind::Git {
-        return Err("new workspaces are only available for git-backed projects".to_string());
-    }
-    if !Path::new(&project.root).is_dir() {
-        return Err("project root is missing".to_string());
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut app_state = app_state.lock().map_err(lock_error)?;
+        let project = app_state
+            .projects
+            .iter()
+            .find(|project| project.id == request.project_id)
+            .cloned()
+            .ok_or_else(|| "project not found".to_string())?;
 
-    let mut warnings = Vec::new();
-    let workspace = create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
-    let workspace_id = workspace.id.clone();
-    app_state.open_workspaces.push(workspace);
-    set_current_workspace(&mut app_state, &workspace_id);
-    normalize_workspace_stack(&mut app_state);
-    state.save(&app_state)?;
+        if project.kind != ProjectKind::Git {
+            return Err("new workspaces are only available for git-backed projects".to_string());
+        }
+        if !Path::new(&project.root).is_dir() {
+            return Err("project root is missing".to_string());
+        }
 
-    let overview = workspace_overview_for_state(&app_state);
-    let current = overview
-        .current
-        .clone()
-        .ok_or_else(|| "created workspace is unavailable".to_string())?;
-    Ok(WorkspaceCreateResponse {
-        current,
-        overview,
-        warnings,
+        let mut warnings = Vec::new();
+        let workspace =
+            create_git_workspace(&app_data_dir, &mut app_state, &project, &mut warnings)?;
+        let workspace_id = workspace.id.clone();
+        app_state.open_workspaces.push(workspace);
+        set_current_workspace(&mut app_state, &workspace_id);
+        normalize_workspace_stack(&mut app_state);
+        save_app_state(&state_path, &app_state)?;
+
+        let overview = workspace_overview_for_state(&app_state);
+        let current = overview
+            .current
+            .clone()
+            .ok_or_else(|| "created workspace is unavailable".to_string())?;
+        Ok(WorkspaceCreateResponse {
+            current,
+            overview,
+            warnings,
+        })
     })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -1082,35 +1090,44 @@ fn project_remove(
 }
 
 #[tauri::command]
-fn workspace_discard(
+async fn workspace_discard(
     state: State<'_, WorkspaceState>,
     terminal_state: State<'_, TerminalState>,
     request: WorkspaceDiscardRequest,
 ) -> Result<WorkspaceDiscardResponse, String> {
-    let mut app_state = state.app_state.lock().map_err(lock_error)?;
-    match workspace_removal::workspace_discard(
-        &mut app_state,
-        &state.app_data_dir,
-        &terminal_state,
-        &request.workspace_id,
-        request.confirm_dirty,
-    )? {
-        workspace_removal::WorkspaceDiscardResult::Dirty { dirty_confirmation } => {
-            Ok(WorkspaceDiscardResponse {
-                overview: workspace_overview_for_state(&app_state),
-                dirty_confirmation: Some(dirty_confirmation),
-                warnings: Vec::new(),
-            })
+    let app_data_dir = state.app_data_dir.clone();
+    let state_path = state.state_path.clone();
+    let app_state = state.app_state.clone();
+    let terminal_state = terminal_state.inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut app_state = app_state.lock().map_err(lock_error)?;
+        match workspace_removal::workspace_discard(
+            &mut app_state,
+            &app_data_dir,
+            &terminal_state,
+            &request.workspace_id,
+            request.confirm_dirty,
+        )? {
+            workspace_removal::WorkspaceDiscardResult::Dirty { dirty_confirmation } => {
+                Ok(WorkspaceDiscardResponse {
+                    overview: workspace_overview_for_state(&app_state),
+                    dirty_confirmation: Some(dirty_confirmation),
+                    warnings: Vec::new(),
+                })
+            }
+            workspace_removal::WorkspaceDiscardResult::Discarded { warnings } => {
+                save_app_state(&state_path, &app_state)?;
+                Ok(WorkspaceDiscardResponse {
+                    overview: workspace_overview_for_state(&app_state),
+                    dirty_confirmation: None,
+                    warnings,
+                })
+            }
         }
-        workspace_removal::WorkspaceDiscardResult::Discarded { warnings } => {
-            state.save(&app_state)?;
-            Ok(WorkspaceDiscardResponse {
-                overview: workspace_overview_for_state(&app_state),
-                dirty_confirmation: None,
-                warnings,
-            })
-        }
-    }
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -4833,11 +4850,11 @@ mod tests {
         WorkspaceState {
             state_path: app_data_dir.join(APP_STATE_FILE),
             app_data_dir,
-            app_state: Mutex::new(PersistedAppState {
+            app_state: Arc::new(Mutex::new(PersistedAppState {
                 projects,
                 open_workspaces,
                 ..PersistedAppState::default()
-            }),
+            })),
         }
     }
 }

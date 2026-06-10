@@ -9,6 +9,8 @@ import {
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
 } from "react";
+import { flushSync } from "react-dom";
+import { BrailleSpinner } from "./BrailleSpinner";
 import {
   CodeEditorTile,
   type CodeEditorController,
@@ -117,6 +119,9 @@ type RecentProjectFilesByWorkspace = Record<string, string[]>;
 
 const maxRecentProjectFiles = 10;
 const recentProjectFilesStorageKey = "fluidity.recentProjectFilesByWorkspace";
+function waitForNextPaint(): Promise<void> {
+  return new Promise((resolve) => window.requestAnimationFrame(() => window.setTimeout(resolve, 0)));
+}
 
 function loadRecentProjectFilesByWorkspace(): RecentProjectFilesByWorkspace {
   try {
@@ -317,6 +322,8 @@ export function App() {
   const [currentWorkspaceDiscardable, setCurrentWorkspaceDiscardable] = useState(false);
   const [tilePickerOpen, setTilePickerOpen] = useState(false);
   const [workspacePickerOpen, setWorkspacePickerOpen] = useState(false);
+  const [workspaceCreationProjectId, setWorkspaceCreationProjectId] = useState<string | null>(null);
+  const [discardingWorkspaceId, setDiscardingWorkspaceId] = useState<string | null>(null);
   const [projectSearchOpen, setProjectSearchOpen] = useState(false);
   const [projectFileItems, setProjectFileItems] = useState<PickerItem[]>([]);
   const [recentProjectFilesByWorkspace, setRecentProjectFilesByWorkspace] =
@@ -332,6 +339,7 @@ export function App() {
   const [dirtyEditorPrompt, setDirtyEditorPrompt] = useState<DirtyEditorPrompt | null>(null);
   const [settingsViewOpen, setSettingsViewOpen] = useState(false);
   const [settingsViewFocusToken, setSettingsViewFocusToken] = useState(0);
+  const [workspaceFocusToken, setWorkspaceFocusToken] = useState(0);
   const [settingsViewInitialCategory, setSettingsViewInitialCategory] = useState<
     "extensions" | null
   >(null);
@@ -806,7 +814,11 @@ export function App() {
 
   const runCreateWorkspace = useCallback(
     (projectId: string) => {
+      if (workspaceCreationProjectId) return;
+      flushSync(() => setWorkspaceCreationProjectId(projectId));
+
       const create = async () => {
+        await waitForNextPaint();
         const codeTileIds = layoutRef.current.tiles
           .filter((tile) => tile.kind === "code")
           .map((tile) => tile.id);
@@ -816,6 +828,7 @@ export function App() {
           "Code editors have unsaved changes.",
         );
         if (!canCreate) return null;
+
         return createWorkspace({ projectId });
       };
 
@@ -834,9 +847,16 @@ export function App() {
             title: "Could not create workspace",
             detail: String(error),
           });
-        });
+        })
+        .finally(() => setWorkspaceCreationProjectId(null));
     },
-    [addToast, addWarningToasts, applyWorkspaceOverview, guardDirtyCodeEditors],
+    [
+      addToast,
+      addWarningToasts,
+      applyWorkspaceOverview,
+      guardDirtyCodeEditors,
+      workspaceCreationProjectId,
+    ],
   );
 
   const runRemoveProject = useCallback(
@@ -971,7 +991,7 @@ export function App() {
 
   const runSwitchWorkspace = useCallback(
     (workspaceId: string) => {
-      if (workspaceId === currentWorkspaceId) return;
+      if (discardingWorkspaceId || workspaceId === currentWorkspaceId) return;
 
       const switchCurrentWorkspace = async () => {
         const codeTileIds = layoutRef.current.tiles
@@ -1007,11 +1027,13 @@ export function App() {
 
       void switchCurrentWorkspace();
     },
-    [addToast, applyWorkspaceOverview, currentWorkspaceId, guardDirtyCodeEditors],
+    [addToast, applyWorkspaceOverview, currentWorkspaceId, discardingWorkspaceId, guardDirtyCodeEditors],
   );
 
   const runDiscardWorkspace = useCallback(
     (workspaceId: string) => {
+      if (discardingWorkspaceId) return;
+
       const finishDiscard = (confirmDirty: boolean) => {
         const discard = async () => {
           if (workspaceId === currentWorkspaceId) {
@@ -1025,6 +1047,9 @@ export function App() {
             );
             if (!canDiscard) return null;
           }
+
+          flushSync(() => setDiscardingWorkspaceId(workspaceId));
+          await waitForNextPaint();
           return discardWorkspace({ workspaceId, confirmDirty });
         };
 
@@ -1032,6 +1057,7 @@ export function App() {
           .then((response) => {
             if (!response) return;
             if (response.dirtyConfirmation) {
+              setDiscardingWorkspaceId(null);
               if (confirmDirtyDeletion(response.dirtyConfirmation)) {
                 finishDiscard(true);
               }
@@ -1055,7 +1081,8 @@ export function App() {
               title: "Could not discard workspace",
               detail: String(error),
             });
-          });
+          })
+          .finally(() => setDiscardingWorkspaceId(null));
       };
 
       finishDiscard(false);
@@ -1066,6 +1093,7 @@ export function App() {
       applyWorkspaceOverview,
       confirmDirtyDeletion,
       currentWorkspaceId,
+      discardingWorkspaceId,
       guardDirtyCodeEditors,
     ],
   );
@@ -1145,6 +1173,11 @@ export function App() {
     setTilePickerOpen(false);
     setWorkspacePickerOpen(false);
     setProjectSearchOpen(false);
+  }, []);
+
+  const closeSettingsView = useCallback(() => {
+    setSettingsViewOpen(false);
+    setWorkspaceFocusToken((token) => token + 1);
   }, []);
 
   const reloadExtensions = useCallback(() => {
@@ -1627,7 +1660,10 @@ export function App() {
 
     return projects
       .map((project) => {
-        const disabled = project.kind !== "git" || project.rootAvailable === false;
+        const workspaceActionLocked = Boolean(workspaceCreationProjectId || discardingWorkspaceId);
+        const disabled =
+          workspaceActionLocked || project.kind !== "git" || project.rootAvailable === false;
+        const creating = project.id === workspaceCreationProjectId;
         const title =
           project.rootAvailable === false
             ? `${project.name} (missing)`
@@ -1638,12 +1674,24 @@ export function App() {
         return {
           id: project.id,
           title,
-          icon: project.kind === "git" ? "⎇" : "⌂",
+          icon: creating ? <BrailleSpinner /> : project.kind === "git" ? "⎇" : "⌂",
+          detail: creating ? "Creating workspace…" : undefined,
           disabled,
         };
       })
-      .concat({ id: "project.add", title: "Add Project…", icon: "+", disabled: false });
-  }, [context?.project.root, registeredProjects]);
+      .concat({
+        id: "project.add",
+        title: "Add Project…",
+        icon: "+",
+        detail: undefined,
+        disabled: Boolean(workspaceCreationProjectId || discardingWorkspaceId),
+      });
+  }, [
+    context?.project.root,
+    discardingWorkspaceId,
+    registeredProjects,
+    workspaceCreationProjectId,
+  ]);
 
   return (
     <main className="app-shell">
@@ -1746,12 +1794,15 @@ export function App() {
                         active={focused}
                         showPaths={debugLayout}
                         deletionPositiveStatColors={diffColorPolarity === "reversed"}
+                        locked={Boolean(discardingWorkspaceId)}
+                        discardingWorkspaceId={discardingWorkspaceId}
                         onSwitchWorkspace={runSwitchWorkspace}
                         onDiscardWorkspace={runDiscardWorkspace}
                       />
                     ) : tile.kind === "code" ? (
                       <CodeEditorTile
                         active={focused}
+                        focusToken={workspaceFocusToken}
                         workspaceId={currentWorkspaceId ?? ""}
                         themeId={resolvedThemeId}
                         diffColorPolarity={diffColorPolarity}
@@ -1813,6 +1864,7 @@ export function App() {
                     ) : tile.kind === "notepad" ? (
                       <NotepadTile
                         active={focused}
+                        focusToken={workspaceFocusToken}
                         markdownEnabled={tileSettings.notepad.markdownEnabled}
                         value={tile.note ?? ""}
                         onChange={(note) => {
@@ -1837,6 +1889,7 @@ export function App() {
                         tileId={tile.id}
                         cwd={workspaceRoot}
                         active={focused}
+                        focusToken={workspaceFocusToken}
                         launch={terminalLaunchForTile(tile)}
                         terminalFontSize={tileSettings.terminal.fontSize}
                         themeId={resolvedThemeId}
@@ -1915,7 +1968,7 @@ export function App() {
           onProjectSettingsChange={setProjectSettings}
           onRemoveProject={runRemoveProject}
           onResetApplication={runResetApplication}
-          onClose={() => setSettingsViewOpen(false)}
+          onClose={closeSettingsView}
           focusToken={settingsViewFocusToken}
           initialCategory={settingsViewInitialCategory}
         />
@@ -1925,8 +1978,11 @@ export function App() {
         <Picker
           title="New Workspace"
           items={workspacePickerItems}
-          onClose={() => setWorkspacePickerOpen(false)}
+          onClose={() => {
+            if (!workspaceCreationProjectId && !discardingWorkspaceId) setWorkspacePickerOpen(false);
+          }}
           onSelect={(item: PickerItem) => {
+            if (workspaceCreationProjectId || discardingWorkspaceId) return;
             if (item.id === "project.add") {
               runAddProject();
               return;

@@ -11,6 +11,7 @@ interface TerminalTileProps {
   tileId: string;
   cwd: string;
   active: boolean;
+  focusToken: number;
   terminalFontSize: number;
   themeId: string;
   launch: TerminalLaunch;
@@ -22,6 +23,7 @@ export function TerminalTile({
   tileId,
   cwd,
   active,
+  focusToken,
   terminalFontSize,
   themeId,
   launch,
@@ -76,7 +78,7 @@ export function TerminalTile({
 
   useEffect(() => {
     runtimeRef.current?.setActive(active);
-  }, [active]);
+  }, [active, focusToken]);
 
   return <div ref={hostRef} className="terminal-host" />;
 }

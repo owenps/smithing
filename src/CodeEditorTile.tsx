@@ -431,6 +431,7 @@ class PreviewErrorBoundary extends Component<
 
 export function CodeEditorTile({
   active,
+  focusToken,
   workspaceId,
   themeId,
   diffColorPolarity,
@@ -446,6 +447,7 @@ export function CodeEditorTile({
   onToast,
 }: {
   active: boolean;
+  focusToken: number;
   workspaceId: string;
   themeId: ThemeId;
   diffColorPolarity: DiffColorPolarity;
@@ -933,7 +935,7 @@ export function CodeEditorTile({
 
   useEffect(() => {
     if (active && !previewVisible) editorRef.current?.focus();
-  }, [active, previewVisible]);
+  }, [active, focusToken, previewVisible]);
 
   useEffect(() => {
     if (!previewVisible) window.requestAnimationFrame(() => editorRef.current?.layout());

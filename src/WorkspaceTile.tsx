@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BrailleSpinner } from "./BrailleSpinner";
 import type { OpenWorkspaceSummary } from "./types";
 
 interface WorkspaceTileProps {
@@ -7,6 +8,8 @@ interface WorkspaceTileProps {
   active: boolean;
   showPaths: boolean;
   deletionPositiveStatColors: boolean;
+  locked: boolean;
+  discardingWorkspaceId: string | null;
   onSwitchWorkspace: (workspaceId: string) => void;
   onDiscardWorkspace: (workspaceId: string) => void;
 }
@@ -23,6 +26,8 @@ export function WorkspaceTile({
   active,
   showPaths,
   deletionPositiveStatColors,
+  locked,
+  discardingWorkspaceId,
   onSwitchWorkspace,
   onDiscardWorkspace,
 }: WorkspaceTileProps) {
@@ -150,6 +155,7 @@ export function WorkspaceTile({
         selectedWorkspaceId ? workspaceOptionId(selectedWorkspaceId) : undefined
       }
       onKeyDown={(event) => {
+        if (locked) return;
         const target = event.target instanceof HTMLElement ? event.target : null;
         const navigationKey = event.key.toLowerCase();
         const plainKey = !event.metaKey && !event.altKey && !event.ctrlKey;
@@ -220,6 +226,7 @@ export function WorkspaceTile({
                 const selected = workspace.id === selectedWorkspaceId;
                 const hasStats = Boolean(workspace.linesAdded || workspace.linesDeleted);
                 const shortcutHint = workspaceShortcutHints.get(workspace.id);
+                const discarding = workspace.id === discardingWorkspaceId;
 
                 return (
                   <div
@@ -228,8 +235,12 @@ export function WorkspaceTile({
                       "workspace-stack-row",
                       current ? "workspace-stack-row-current" : "",
                       selected ? "workspace-stack-row-selected" : "",
+                      locked ? "workspace-stack-row-locked" : "",
+                      discarding ? "workspace-stack-row-discarding" : "",
                     ].join(" ")}
-                    onMouseEnter={() => setSelectedWorkspaceId(workspace.id)}
+                    onMouseEnter={() => {
+                      if (!locked) setSelectedWorkspaceId(workspace.id);
+                    }}
                   >
                     <button
                       id={workspaceOptionId(workspace.id)}
@@ -237,17 +248,20 @@ export function WorkspaceTile({
                       type="button"
                       role="option"
                       aria-selected={selected}
+                      disabled={locked}
                       onFocus={() => setSelectedWorkspaceId(workspace.id)}
                       onClick={() => onSwitchWorkspace(workspace.id)}
                     >
                       <span className="workspace-stack-name-row">
                         <span className="workspace-stack-name">{workspace.name}</span>
                       </span>
-                      {showPaths ? (
+                      {discarding ? (
+                        <span className="workspace-stack-root">Discarding workspace</span>
+                      ) : showPaths ? (
                         <span className="workspace-stack-root">{workspace.root}</span>
                       ) : null}
                     </button>
-                    {hasStats ? (
+                    {!discarding && hasStats ? (
                       <span
                         className="workspace-stack-stats"
                         aria-label={workspaceStatsLabel(workspace)}
@@ -260,7 +274,11 @@ export function WorkspaceTile({
                         </span>
                       </span>
                     ) : null}
-                    {showShortcutHints && shortcutHint ? (
+                    {discarding ? (
+                      <span className="workspace-stack-discarding-spinner" role="status">
+                        <BrailleSpinner />
+                      </span>
+                    ) : showShortcutHints && shortcutHint ? (
                       <span className="workspace-stack-shortcut-hint" aria-hidden="true">
                         {shortcutHint}
                       </span>
@@ -276,6 +294,7 @@ export function WorkspaceTile({
                         className="workspace-stack-discard"
                         type="button"
                         aria-label="Discard workspace"
+                        disabled={locked}
                         data-tooltip={discardTooltipForWorkspace(current)}
                         onFocus={() => setSelectedWorkspaceId(workspace.id)}
                         onClick={(event) => {

@@ -4,15 +4,15 @@ use std::{
     collections::HashMap,
     io::{Read, Write},
     path::PathBuf,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread,
 };
 use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct TerminalState {
-    sessions: Mutex<HashMap<String, TerminalSession>>,
+    sessions: Arc<Mutex<HashMap<String, TerminalSession>>>,
 }
 
 struct TerminalSession {
