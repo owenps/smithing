@@ -19,6 +19,7 @@ import {
 import type { CodeViewHandle } from "@pierre/diffs/react";
 import { getCurrentWorkspaceGitPatch } from "./diffClient";
 import { darkThemeId, type ThemeId } from "./themeRegistry";
+import { ScrollArea } from "./ScrollArea";
 import type { DiffColorPolarity } from "./settings";
 import type {
   CurrentWorkspaceGitPatchResponse,
@@ -454,13 +455,18 @@ export function DiffTile({
             />
           </button>
           <span className="diff-file-title" title={item.fileDiff.name}>
-            {item.fileDiff.prevName ? `${item.fileDiff.prevName} → ${item.fileDiff.name}` : item.fileDiff.name}
+            {item.fileDiff.prevName
+              ? `${item.fileDiff.prevName} → ${item.fileDiff.name}`
+              : item.fileDiff.name}
           </span>
         </div>
         <div className="diff-file-header-meta">
           <span className="diff-file-stat diff-file-stat-additions">+{additions}</span>
           <span className="diff-file-stat diff-file-stat-deletions">-{deletions}</span>
-          <label className="diff-file-viewed-checkbox" title={shortcutTooltip("Mark as viewed", "V", active)}>
+          <label
+            className="diff-file-viewed-checkbox"
+            title={shortcutTooltip("Mark as viewed", "V", active)}
+          >
             <input
               type="checkbox"
               checked={viewed}
@@ -694,7 +700,7 @@ export function DiffTile({
           <span className="diff-toolbar-icon diff-toolbar-icon-whitespace" aria-hidden="true" />
         </button>
       </div>
-      <div className="diff-tile-content">
+      <ScrollArea className="diff-tile-content">
         {status === "loading" ? (
           <DiffTileMessage title="Loading diff…" />
         ) : status === "unavailable" ? (
@@ -720,7 +726,7 @@ export function DiffTile({
         ) : (
           <DiffTileMessage title="No working-tree changes" detail="Workspace matches HEAD." />
         )}
-      </div>
+      </ScrollArea>
     </section>
   );
 }

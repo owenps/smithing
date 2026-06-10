@@ -9,7 +9,7 @@ import {
   type TileResumeMetadata,
 } from "./types";
 
-export type BuiltInTileDefinitionId = "workspace" | "code" | "diff" | "terminal";
+export type BuiltInTileDefinitionId = "workspace" | "code" | "diff" | "notepad" | "terminal";
 export type TileDefinitionId = BuiltInTileDefinitionId | string;
 
 export type BuiltInTileDefinitionIcon =
@@ -23,7 +23,7 @@ export type TileDefinitionIcon = BuiltInTileDefinitionIcon | IntegrationCatalogT
 export type TileDefinition =
   | {
       id: TileDefinitionId;
-      kind: "terminal" | "workspace" | "code" | "diff";
+      kind: "terminal" | "workspace" | "code" | "diff" | "notepad";
       title: string;
       defaultVisible: boolean;
       icon: TileDefinitionIcon;
@@ -44,6 +44,7 @@ export type TileDefinitionSnapshot =
   | { kind: "workspace"; title: string }
   | { kind: "code"; title: string; editor?: CodeEditorTileState }
   | { kind: "diff"; title: string }
+  | { kind: "notepad"; title: string; note?: string }
   | {
       kind: "tool";
       title: string;
@@ -89,10 +90,19 @@ export const diffTileDefinition = {
   defaultVisible: true,
 } as const satisfies TileDefinition;
 
+export const notepadTileDefinition = {
+  id: "notepad",
+  kind: "notepad",
+  title: "Notepad",
+  icon: { kind: "text", fallbackText: "N" },
+  defaultVisible: true,
+} as const satisfies TileDefinition;
+
 export const defaultTileDefinitions: TileDefinition[] = [
   workspaceTileDefinition,
   codeEditorTileDefinition,
   diffTileDefinition,
+  notepadTileDefinition,
   terminalTileDefinition,
 ];
 
@@ -120,6 +130,7 @@ export function createTileDefinitions(toolTiles: IntegrationCatalogTile[]): Tile
     workspaceTileDefinition,
     codeEditorTileDefinition,
     diffTileDefinition,
+    notepadTileDefinition,
     ...toolTiles.map(tileDefinitionFromIntegrationTile),
     terminalTileDefinition,
   ];
@@ -163,6 +174,7 @@ export function createTileFromDefinitionSnapshot(
   if (definition.kind === "workspace") return { ...base, kind: "workspace" };
   if (definition.kind === "code") return { ...base, kind: "code", editor: definition.editor };
   if (definition.kind === "diff") return { ...base, kind: "diff" };
+  if (definition.kind === "notepad") return { ...base, kind: "notepad", note: definition.note };
   return { ...base, kind: "terminal", resume: definition.resume };
 }
 
@@ -197,6 +209,7 @@ export function tileDefinitionSnapshotForTile(tile: Tile): TileDefinitionSnapsho
   if (tile.kind === "workspace") return { kind: "workspace", title: tile.title };
   if (tile.kind === "code") return { kind: "code", title: tile.title, editor: tile.editor };
   if (tile.kind === "diff") return { kind: "diff", title: tile.title };
+  if (tile.kind === "notepad") return { kind: "notepad", title: tile.title, note: tile.note };
   return { kind: "terminal", title: tile.title, resume: tile.resume };
 }
 

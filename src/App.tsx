@@ -23,6 +23,7 @@ import {
 import { commandIdForKeyboardEvent, createCommands, type AppCommandApi } from "./commands";
 import { DiffTile } from "./DiffTile";
 import { fileIconForPath } from "./fileIcons";
+import { NotepadTile } from "./NotepadTile";
 import { Picker, PickerShortcutHint, PickerShortcutSeparator, type PickerItem } from "./Picker";
 import { APP_NAME } from "./appConstants";
 import { resetApplication } from "./applicationClient";
@@ -266,6 +267,7 @@ function tileOptionsForCatalogItem(catalogItem: TilePickerCatalogItem):
   | { kind: "workspace"; title: string }
   | { kind: "code"; title: string }
   | { kind: "diff"; title: string }
+  | { kind: "notepad"; title: string }
   | {
       kind: "tool";
       title: string;
@@ -293,6 +295,10 @@ function tileOptionsForCatalogItem(catalogItem: TilePickerCatalogItem):
 
   if (catalogItem.kind === "diff") {
     return { kind: "diff", title: catalogItem.title };
+  }
+
+  if (catalogItem.kind === "notepad") {
+    return { kind: "notepad", title: catalogItem.title };
   }
 
   return { kind: "terminal", title: catalogItem.title };
@@ -1471,6 +1477,7 @@ export function App() {
       | { kind: "workspace"; title: string }
       | { kind: "code"; title: string }
       | { kind: "diff"; title: string }
+      | { kind: "notepad"; title: string }
       | {
           kind: "tool";
           title: string;
@@ -1802,6 +1809,22 @@ export function App() {
                           updateDiffTileViewedFiles(tile.id, viewedFiles)
                         }
                         onInsertAnnotationPayload={insertDiffAnnotationPayload}
+                      />
+                    ) : tile.kind === "notepad" ? (
+                      <NotepadTile
+                        active={focused}
+                        markdownEnabled={tileSettings.notepad.markdownEnabled}
+                        value={tile.note ?? ""}
+                        onChange={(note) => {
+                          setLayout((previous) => ({
+                            ...previous,
+                            tiles: previous.tiles.map((candidate) =>
+                              candidate.id === tile.id && candidate.kind === "notepad"
+                                ? { ...candidate, note }
+                                : candidate,
+                            ),
+                          }));
+                        }}
                       />
                     ) : tile.kind === "tool" && !integrationCatalogLoaded ? (
                       <div className="tile-placeholder">Loading Integration Tile…</div>

@@ -4,7 +4,13 @@ import {
   defaultConfigurableTilePickerItems,
   type TilePickerVisibility,
 } from "./tilePickerCatalog";
-import type { CodeEditorSettings, DiffTileSettings, TerminalTileSettings, TileSettings } from "./types";
+import type {
+  CodeEditorSettings,
+  DiffTileSettings,
+  NotepadTileSettings,
+  TerminalTileSettings,
+  TileSettings,
+} from "./types";
 
 export const terminalFontSizeMin = 10;
 export const terminalFontSizeMax = 24;
@@ -55,6 +61,22 @@ export function normalizeDiffTileSettings(
       typeof value?.reviewProgressVisible === "boolean"
         ? value.reviewProgressVisible
         : defaults.reviewProgressVisible,
+  };
+}
+
+export function createDefaultNotepadTileSettings(): NotepadTileSettings {
+  return { markdownEnabled: true };
+}
+
+export function normalizeNotepadTileSettings(
+  value: Partial<NotepadTileSettings> | null | undefined,
+): NotepadTileSettings {
+  const defaults = createDefaultNotepadTileSettings();
+  return {
+    markdownEnabled:
+      typeof value?.markdownEnabled === "boolean"
+        ? value.markdownEnabled
+        : defaults.markdownEnabled,
   };
 }
 
@@ -115,6 +137,7 @@ export function createDefaultTileSettings(): TileSettings {
     terminal: createDefaultTerminalTileSettings(),
     codeEditor: createDefaultCodeEditorSettings(),
     diff: createDefaultDiffTileSettings(),
+    notepad: createDefaultNotepadTileSettings(),
   };
 }
 
@@ -124,6 +147,7 @@ export function normalizeTileSettings(
         terminal?: Partial<TerminalTileSettings> | null;
         codeEditor?: Partial<CodeEditorSettings> | null;
         diff?: Partial<DiffTileSettings> | null;
+        notepad?: Partial<NotepadTileSettings> | null;
       }
     | null
     | undefined,
@@ -132,6 +156,7 @@ export function normalizeTileSettings(
     terminal: normalizeTerminalTileSettings(value?.terminal),
     codeEditor: normalizeCodeEditorSettings(value?.codeEditor),
     diff: normalizeDiffTileSettings(value?.diff),
+    notepad: normalizeNotepadTileSettings(value?.notepad),
   };
 }
 
@@ -188,6 +213,7 @@ export function normalizeAppSettings(value: Partial<AppSettings> | null | undefi
         ...storedTileSettings.codeEditor,
       },
       diff: storedTileSettings.diff,
+      notepad: storedTileSettings.notepad,
     }),
     deletionPositiveStatColors:
       typeof value?.deletionPositiveStatColors === "boolean"

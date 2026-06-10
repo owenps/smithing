@@ -6,7 +6,7 @@ export const DEFAULT_WORKSPACE_TILE_WIDTH = 3;
 
 export type Direction = "left" | "down" | "up" | "right";
 
-export type TileKind = "terminal" | "tool" | "workspace" | "code" | "diff";
+export type TileKind = "terminal" | "tool" | "workspace" | "code" | "diff" | "notepad";
 
 export interface TileResumeMetadata {
   provider: string;
@@ -64,10 +64,15 @@ export interface DiffTileSettings {
   reviewProgressVisible: boolean;
 }
 
+export interface NotepadTileSettings {
+  markdownEnabled: boolean;
+}
+
 export interface TileSettings {
   terminal: TerminalTileSettings;
   codeEditor: CodeEditorSettings;
   diff: DiffTileSettings;
+  notepad: NotepadTileSettings;
 }
 
 export interface CodeEditorViewState {
@@ -113,6 +118,11 @@ export interface DiffWorkspaceTile extends BaseTile {
   viewedFiles?: DiffViewedFile[];
 }
 
+export interface NotepadWorkspaceTile extends BaseTile {
+  kind: "notepad";
+  note?: string;
+}
+
 export interface DiffViewedFile {
   fileId: string;
   signature: string;
@@ -128,7 +138,8 @@ export type Tile =
   | ToolWorkspaceTile
   | WorkspaceStackTile
   | CodeEditorWorkspaceTile
-  | DiffWorkspaceTile;
+  | DiffWorkspaceTile
+  | NotepadWorkspaceTile;
 
 export type ProjectKind = "git" | "plain";
 

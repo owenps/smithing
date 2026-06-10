@@ -1,6 +1,6 @@
 [package]
 name = "fluidity"
-version = "0.0.1"
+version = "0.0.2"
 description = "Fluidity desktop application"
 authors = ["Owen Smith"]
 edition = "2021"

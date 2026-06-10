@@ -9,6 +9,7 @@ import {
   type DiffColorPolarity,
   normalizeCodeEditorSettings,
   normalizeDiffTileSettings,
+  normalizeNotepadTileSettings,
   normalizeTerminalTileSettings,
   terminalFontSizeMax,
   terminalFontSizeMin,
@@ -30,6 +31,7 @@ import type {
   ExtensionSettingsResponse,
   CodeEditorSettings,
   DiffTileSettings,
+  NotepadTileSettings,
   ProjectSettings,
   RegisteredProject,
   TerminalTileSettings,
@@ -163,10 +165,15 @@ function diffControlIds(prefix: string) {
   return [`${prefix}:review-progress`];
 }
 
+function notepadControlIds(prefix: string) {
+  return [`${prefix}:markdown-enabled`];
+}
+
 function tileSettingsControlIds(item: ConfigurableTilePickerCatalogItem) {
   if (item.kind === "terminal") return terminalControlIds("tile-terminal");
   if (item.kind === "code") return codeEditorControlIds("tile-code-editor");
   if (item.kind === "diff") return diffControlIds("tile-diff");
+  if (item.kind === "notepad") return notepadControlIds("tile-notepad");
   return [];
 }
 
@@ -419,6 +426,7 @@ export function SettingsView({
   const terminalTileSettings = normalizeTerminalTileSettings(tileSettings.terminal);
   const codeEditorSettings = normalizeCodeEditorSettings(tileSettings.codeEditor);
   const diffTileSettings = normalizeDiffTileSettings(tileSettings.diff);
+  const notepadTileSettings = normalizeNotepadTileSettings(tileSettings.notepad);
 
   const updateTerminalTileSettings = (patch: Partial<TerminalTileSettings>) => {
     onTileSettingsChange({
@@ -438,6 +446,13 @@ export function SettingsView({
     onTileSettingsChange({
       ...tileSettings,
       diff: normalizeDiffTileSettings({ ...tileSettings.diff, ...patch }),
+    });
+  };
+
+  const updateNotepadTileSettings = (patch: Partial<NotepadTileSettings>) => {
+    onTileSettingsChange({
+      ...tileSettings,
+      notepad: normalizeNotepadTileSettings({ ...tileSettings.notepad, ...patch }),
     });
   };
 
@@ -536,6 +551,14 @@ export function SettingsView({
     }
   };
 
+  const activateNotepadTileControl = (controlId: string) => {
+    if (!controlId.startsWith("tile-notepad:")) return;
+    const key = controlId.slice("tile-notepad:".length);
+    if (key === "markdown-enabled") {
+      updateNotepadTileSettings({ markdownEnabled: !notepadTileSettings.markdownEnabled });
+    }
+  };
+
   const activateControl = () => {
     if (activeControlId === "debug-layout") {
       onDebugLayoutChange(!debugLayout);
@@ -551,6 +574,10 @@ export function SettingsView({
     }
     if (activeControlId.startsWith("tile-diff:")) {
       activateDiffTileControl(activeControlId);
+      return;
+    }
+    if (activeControlId.startsWith("tile-notepad:")) {
+      activateNotepadTileControl(activeControlId);
       return;
     }
     if (activeControlId === "tile-picker-refresh") {
@@ -640,6 +667,11 @@ export function SettingsView({
     if (activeControlId.startsWith("tile-diff:")) {
       setExpandedTileSettingsItemId(null);
       setActiveControlId("tile-picker:diff");
+      return true;
+    }
+    if (activeControlId.startsWith("tile-notepad:")) {
+      setExpandedTileSettingsItemId(null);
+      setActiveControlId("tile-picker:notepad");
       return true;
     }
     return false;
@@ -1195,6 +1227,20 @@ export function SettingsView({
     });
   }
 
+  function renderNotepadSettingsRows(
+    prefix: "tile-notepad",
+    value: NotepadTileSettings,
+    onChange: (patch: Partial<NotepadTileSettings>) => void,
+  ) {
+    return renderToggleRow({
+      id: `${prefix}:markdown-enabled`,
+      title: "Markdown preview",
+      description: "Render notes as Markdown when the Notepad tile is unfocused.",
+      checked: value.markdownEnabled,
+      onChange: (markdownEnabled) => onChange({ markdownEnabled }),
+    });
+  }
+
   function renderTilesDetail() {
     return (
       <div className="settings-detail-body settings-tiles-body">
@@ -1247,7 +1293,11 @@ export function SettingsView({
   function renderTileSettingsItem(item: ConfigurableTilePickerCatalogItem) {
     const active = activeControlId === `tile-picker:${item.id}` && focusPane === "right";
     const expanded = expandedTileSettingsItemId === item.id;
-    const configurable = item.kind === "terminal" || item.kind === "code" || item.kind === "diff";
+    const configurable =
+      item.kind === "terminal" ||
+      item.kind === "code" ||
+      item.kind === "diff" ||
+      item.kind === "notepad";
     return (
       <div key={item.id} className="settings-tile-config-item">
         <div
@@ -1299,6 +1349,13 @@ export function SettingsView({
     }
     if (item.kind === "diff") {
       return renderDiffSettingsRows("tile-diff", diffTileSettings, updateDiffTileSettings);
+    }
+    if (item.kind === "notepad") {
+      return renderNotepadSettingsRows(
+        "tile-notepad",
+        notepadTileSettings,
+        updateNotepadTileSettings,
+      );
     }
     return <div className="settings-detail-empty">No settings for this Tile yet.</div>;
   }

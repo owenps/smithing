@@ -74,6 +74,10 @@
   --code-editor-muted-foreground: #57606a;
   --git-addition-foreground: #1a7f37;
   --git-deletion-foreground: #cf222e;
+  --fluidity-scrollbar-shadow: #dddddd;
+  --fluidity-scrollbar-thumb: rgb(100 100 100 / 0.4);
+  --fluidity-scrollbar-thumb-hover: rgb(100 100 100 / 0.7);
+  --fluidity-scrollbar-thumb-active: rgb(0 0 0 / 0.6);
 }
 
 .dark {
@@ -121,10 +125,76 @@
   --code-editor-muted-foreground: #a1a1a1;
   --git-addition-foreground: #7ee787;
   --git-deletion-foreground: #ffa198;
+  --fluidity-scrollbar-shadow: #000000;
+  --fluidity-scrollbar-thumb: rgb(121 121 121 / 0.4);
+  --fluidity-scrollbar-thumb-hover: rgb(100 100 100 / 0.7);
+  --fluidity-scrollbar-thumb-active: rgb(191 191 191 / 0.4);
 }
 
 * {
   box-sizing: border-box;
+}
+
+.fluidity-scroll-area {
+  position: relative;
+  overflow: hidden;
+}
+
+.fluidity-scroll-area-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: scroll;
+  scrollbar-width: none;
+}
+
+.fluidity-scroll-area-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.fluidity-scroll-area-scrollbar {
+  position: absolute;
+  z-index: 20;
+  background: transparent;
+  touch-action: none;
+}
+
+.fluidity-scroll-area-scrollbar-vertical {
+  top: 0;
+  right: 0;
+  width: 14px;
+  height: 100%;
+}
+
+.fluidity-scroll-area-scrollbar-horizontal {
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 12px;
+}
+
+.fluidity-scroll-area-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background: var(--fluidity-scrollbar-thumb);
+}
+
+.fluidity-scroll-area-scrollbar-vertical .fluidity-scroll-area-thumb {
+  width: 14px;
+}
+
+.fluidity-scroll-area-scrollbar-horizontal .fluidity-scroll-area-thumb {
+  height: 12px;
+}
+
+.fluidity-scroll-area-thumb:hover {
+  background: var(--fluidity-scrollbar-thumb-hover);
+}
+
+.fluidity-scroll-area-thumb:active {
+  background: var(--fluidity-scrollbar-thumb-active);
 }
 
 html,
@@ -605,7 +675,8 @@ body {
 .tile-unavailable,
 .workspace-stack-tile,
 .code-editor-tile,
-.diff-tile {
+.diff-tile,
+.notepad-tile {
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -637,6 +708,70 @@ body {
 
 .tile-unavailable code {
   color: var(--foreground);
+}
+
+.notepad-tile {
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.notepad-textarea,
+.notepad-preview {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.85rem;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.55;
+}
+
+.notepad-textarea {
+  display: block;
+  resize: none;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.notepad-textarea::placeholder,
+.notepad-preview-empty {
+  color: var(--muted-foreground);
+}
+
+.notepad-preview > :first-child {
+  margin-top: 0;
+}
+
+.notepad-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.notepad-preview code {
+  border-radius: 4px;
+  background: var(--muted);
+  padding: 0.1rem 0.25rem;
+}
+
+.notepad-preview pre {
+  overflow: auto;
+  border-radius: 6px;
+  background: var(--muted);
+  padding: 0.65rem;
+}
+
+.notepad-preview pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.notepad-preview blockquote {
+  margin-left: 0;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--border);
+  color: var(--muted-foreground);
 }
 
 .diff-tile {
@@ -783,32 +918,6 @@ body {
   height: 100%;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 38%, transparent) transparent;
-}
-
-.diff-tile-content::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-.diff-tile-content::-webkit-scrollbar-track,
-.diff-tile-content::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-.diff-tile-content::-webkit-scrollbar-thumb {
-  min-height: 32px;
-  border: 3px solid transparent;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted-foreground) 34%, transparent);
-  background-clip: content-box;
-}
-
-.diff-tile-content::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--muted-foreground) 52%, transparent);
-  background-clip: content-box;
 }
 
 .diff-tile-content .diffs-container {
@@ -848,7 +957,7 @@ body {
   width: 100%;
   min-width: 0;
   min-height: 32px;
-  padding-inline: 8px;
+  padding-inline: 8px 22px;
   cursor: pointer;
 }
 

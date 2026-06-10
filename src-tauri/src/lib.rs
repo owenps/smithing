@@ -337,6 +337,8 @@ struct PersistedTile {
     annotations: Option<Vec<DiffAnnotation>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     viewed_files: Option<Vec<DiffViewedFile>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     extension_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2006,6 +2008,7 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
                 editor: None,
                 annotations: None,
                 viewed_files: None,
+                note: None,
                 extension_id: None,
                 integration_id: None,
                 integration_tile_id: None,
@@ -2024,6 +2027,7 @@ fn default_workspace_tile_state() -> WorkspaceTileState {
                 editor: None,
                 annotations: None,
                 viewed_files: None,
+                note: None,
                 extension_id: None,
                 integration_id: None,
                 integration_tile_id: None,
@@ -2070,6 +2074,10 @@ fn sanitize_tile_state(tile_state: WorkspaceTileState) -> WorkspaceTileState {
         } else {
             tile.annotations = sanitize_diff_annotations(tile.annotations.take());
             tile.viewed_files = sanitize_diff_viewed_files(tile.viewed_files.take());
+        }
+
+        if tile.kind != "notepad" {
+            tile.note = None;
         }
 
         if tile.kind == "terminal" {
@@ -4297,6 +4305,7 @@ mod tests {
                 editor: None,
                 annotations: None,
                 viewed_files: None,
+                note: None,
                 extension_id: Some("example.missing".to_string()),
                 integration_id: Some("missing-agent".to_string()),
                 integration_tile_id: Some("cli".to_string()),
@@ -4755,6 +4764,7 @@ mod tests {
             editor: None,
             annotations: None,
             viewed_files: None,
+            note: None,
             extension_id: None,
             integration_id: None,
             integration_tile_id: None,
@@ -4776,6 +4786,7 @@ mod tests {
             editor: None,
             annotations: None,
             viewed_files: None,
+            note: None,
             extension_id: None,
             integration_id: None,
             integration_tile_id: None,
