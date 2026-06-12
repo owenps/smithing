@@ -938,6 +938,29 @@ enum ProjectKind {
 }
 
 #[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let trimmed_url = url.trim();
+    let lower_url = trimmed_url.to_ascii_lowercase();
+    if !(lower_url.starts_with("https://") || lower_url.starts_with("http://")) {
+        return Err("Only http and https URLs can be opened.".to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .arg(trimmed_url)
+            .spawn()
+            .map_err(|error| format!("Could not open URL: {error}"))?;
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("Opening external URLs is only supported on macOS.".to_string())
+    }
+}
+
+#[tauri::command]
 fn workspace_current(
     state: State<'_, WorkspaceState>,
 ) -> Result<Option<CurrentWorkspaceResponse>, String> {
@@ -1686,6 +1709,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
+            open_external_url,
             workspace_current,
             workspace_overview,
             workspace_git_patch_current,

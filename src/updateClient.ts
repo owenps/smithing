@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
@@ -26,6 +27,10 @@ export async function checkForAvailableUpdate(): Promise<AvailableUpdate | null>
 
 export async function relaunchApplication(): Promise<void> {
   await relaunch();
+}
+
+export async function openReleaseNotes(url: string): Promise<void> {
+  await invoke("open_external_url", { url });
 }
 
 function releaseNotesUrl(update: Update): string {

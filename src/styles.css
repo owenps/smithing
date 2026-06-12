@@ -315,12 +315,21 @@ body {
   --toast-icon: url("./assets/toast-error.svg");
 }
 
-.toast-icon {
+.toast-icon,
+.toast-loading-icon {
   width: 16px;
   height: 16px;
   margin-top: 1px;
+}
+
+.toast-icon {
   background: var(--muted-foreground);
   mask: var(--toast-icon) center / contain no-repeat;
+}
+
+.toast-loading-icon {
+  display: grid;
+  place-items: center;
 }
 
 .toast-copy {
@@ -361,7 +370,7 @@ body {
 
 .toast-action {
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 0;
   background: transparent;
   color: var(--foreground);
   cursor: pointer;
@@ -382,6 +391,9 @@ body {
 }
 
 .toast-action-primary:hover {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
   filter: brightness(1.05);
 }
 

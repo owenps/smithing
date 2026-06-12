@@ -57,7 +57,12 @@ import {
   insertTextIntoTerminalSessionRuntime,
 } from "./terminalSessionRuntime";
 import { ToastStack, type AppToast } from "./ToastStack";
-import { checkForAvailableUpdate, relaunchApplication, type AvailableUpdate } from "./updateClient";
+import {
+  checkForAvailableUpdate,
+  openReleaseNotes,
+  relaunchApplication,
+  type AvailableUpdate,
+} from "./updateClient";
 import { WorkspaceTile } from "./WorkspaceTile";
 import {
   closeTile,
@@ -534,40 +539,69 @@ export function App() {
       if (announcedUpdateVersionRef.current === update.version) return;
       announcedUpdateVersionRef.current = update.version;
 
+      let updateToastId: string | null = null;
       const restartWithUpdate = () => {
         if (updateInstallInFlightRef.current) return;
         updateInstallInFlightRef.current = true;
-        addToast({
-          severity: "info",
-          title: "Installing update",
-          detail: `Downloading Fluidity ${update.version}…`,
-          autoDismiss: false,
-        });
+        if (updateToastId) {
+          setToasts((previous) =>
+            previous.map((toast) =>
+              toast.id === updateToastId
+                ? {
+                    ...toast,
+                    title: "Updating Fluidity",
+                    detail: `Downloading Fluidity ${update.version}…`,
+                    actions: [],
+                    loading: true,
+                  }
+                : toast,
+            ),
+          );
+        }
 
         void update
           .install()
           .then(() => relaunchApplication())
           .catch((error) => {
             updateInstallInFlightRef.current = false;
-            addToast({
-              severity: "error",
-              title: "Update failed",
-              detail: String(error),
-            });
+            if (updateToastId) {
+              setToasts((previous) =>
+                previous.map((toast) =>
+                  toast.id === updateToastId
+                    ? {
+                        ...toast,
+                        severity: "error",
+                        title: "Update failed",
+                        detail: String(error),
+                        actions: [],
+                        loading: false,
+                      }
+                    : toast,
+                ),
+              );
+            }
           });
       };
 
-      addToast({
+      updateToastId = addToast({
         severity: "info",
         title: "Update available",
         detail: `Fluidity ${update.version} is ready to install.`,
         autoDismiss: false,
         actions: [
           {
-            label: "See Changes",
-            onClick: () => window.open(update.notesUrl, "_blank", "noopener,noreferrer"),
+            label: "Release notes",
+            onClick: () => {
+              void openReleaseNotes(update.notesUrl).catch((error) => {
+                addToast({
+                  severity: "error",
+                  title: "Could not open release notes",
+                  detail: String(error),
+                });
+              });
+            },
           },
-          { label: "Restart", variant: "primary", onClick: restartWithUpdate },
+          { label: "Update", variant: "primary", onClick: restartWithUpdate },
         ],
       });
     },

@@ -1,3 +1,5 @@
+import { BrailleSpinner } from "./BrailleSpinner";
+
 export type ToastSeverity = "error" | "info" | "success";
 
 const toastSeverityLabels: Record<ToastSeverity, string> = {
@@ -19,6 +21,7 @@ export interface AppToast {
   detail?: string;
   actions?: ToastAction[];
   autoDismiss?: boolean;
+  loading?: boolean;
 }
 
 interface ToastStackProps {
@@ -33,7 +36,13 @@ export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
     <div className="toast-stack" aria-live="polite" aria-relevant="additions removals">
       {toasts.map((toast) => (
         <article key={toast.id} className={`toast toast-${toast.severity}`}>
-          <span className="toast-icon" aria-hidden="true" />
+          {toast.loading ? (
+            <span className="toast-loading-icon" aria-hidden="true">
+              <BrailleSpinner />
+            </span>
+          ) : (
+            <span className="toast-icon" aria-hidden="true" />
+          )}
           <div className="toast-copy">
             <span className="toast-status-label">{toastSeverityLabels[toast.severity]}</span>
             <h2>{toast.title}</h2>
